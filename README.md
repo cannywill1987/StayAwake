@@ -1,6 +1,14 @@
-# StayAwake
+# NoSleepy - Wake Keeper
 
-StayAwake is a Flutter macOS utility that keeps the Mac awake through a native menu bar controller and IOKit power assertions.
+NoSleepy - Wake Keeper is a Flutter desktop utility that keeps your computer awake through a native menu bar controller and IOKit power assertions.
+
+## Support
+
+For questions, bug reports, or feature requests, open a GitHub issue:
+
+https://github.com/cannywill1987/StayAwake/issues
+
+Please include your app version, operating system version, what you expected to happen, and what happened instead. If you are reporting a keep-awake issue, include whether the session was started from the main window or the menu bar.
 
 ## Run
 
