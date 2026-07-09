@@ -1,0 +1,91 @@
+{
+  "createdDate": "260709",
+  "app": {
+    "nameVisibleInAscHeader": "NoSleepy - Wake Keeper",
+    "appId": "6786129358",
+    "submissionId": "0e9dd12a-41fb-4963-96d9-0dabe3aabcda",
+    "reviewedVersion": "1.0 (3)"
+  },
+  "conclusion": "not_fully_resolved",
+  "ascObservedStatus": {
+    "submissionStatus": "issues_unresolved",
+    "rejectedItem": "macOS App 1.0 / 1.0.0 (3)",
+    "activeIssues": [
+      "2.1.0 Performance: App Completeness (macOS)",
+      "5.2.5 Legal: Intellectual Property - Apple Products (macOS)"
+    ],
+    "latestAppleMessageMentions": [
+      "NoSleepy - MacWaker",
+      "Terms for Mac in the app name in an inappropriate manner"
+    ]
+  },
+  "localRisks": [
+    {
+      "type": "metadata_text",
+      "path": "docs/StayAwake/main/12-运营素材/AppStore描述-260701.md",
+      "examples": [
+        "让 Mac 保持唤醒",
+        "Keep your Mac awake",
+        "helps your Mac stay awake"
+      ]
+    },
+    {
+      "type": "screenshot",
+      "path": "docs/StayAwake/main/12-运营素材/final/nosleepy-appstore-01-cn.png",
+      "examples": [
+        "让你的 Mac 保持唤醒，专注高效",
+        "Mac App Store"
+      ]
+    },
+    {
+      "type": "screenshot",
+      "path": "docs/StayAwake/main/12-运营素材/final/selected-generated-cn-appstore-2880x1800.png",
+      "examples": [
+        "让你的 Mac 保持唤醒，专注高效",
+        "Mac App Store"
+      ]
+    },
+    {
+      "type": "generator_script",
+      "path": "scripts/build_app_store_screenshots.py",
+      "examples": [
+        "Mac 保持唤醒工具",
+        "让 Mac 保持唤醒",
+        "StayAwake for macOS"
+      ]
+    },
+    {
+      "type": "review_attachment_or_reference",
+      "path": "docs/StayAwake/main/12-运营素材/review",
+      "examples": [
+        "NoSleepy-MacWaker-AppReview-2.1-260702.mov",
+        "NoSleepy-MacWaker-AppReview-2.1-clean-260702.mov"
+      ]
+    }
+  ],
+  "recommendedFix": {
+    "replacePhrases": {
+      "Keep your Mac awake": "Keep your computer awake",
+      "让 Mac 保持唤醒": "让电脑保持唤醒",
+      "helps your Mac stay awake": "helps your computer stay awake",
+      "Mac 用户": "desktop users",
+      "MacWaker": ""
+    },
+    "removeFromScreenshots": [
+      "Mac App Store badge",
+      "Mac as headline or hero marketing text"
+    ]
+  },
+  "actionsTakenThisRun": [
+    "Checked current ASC review submission page read-only",
+    "Checked local App Store metadata documents",
+    "Opened local final screenshots for visual inspection",
+    "Created this Markdown and JSON recheck report"
+  ],
+  "actionsNotTaken": [
+    "No App Store Connect fields were edited",
+    "No App Review reply was sent",
+    "No resubmission was performed",
+    "No screenshot files were modified"
+  ]
+}
