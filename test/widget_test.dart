@@ -4,13 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:stay_awake/main.dart';
 
 void main() {
-  setUp(_mockStatusBarChannel);
+  setUp(() {
+    AppLocaleController.setLanguageMode(AppLocaleController.system);
+    _mockStatusBarChannel();
+  });
 
   testWidgets('StayAwake renders and switches the main pages', (tester) async {
     await tester.pumpWidget(const StayAwakeApp());
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('StayAwake'), findsOneWidget);
+    expect(find.text(Params.appName), findsOneWidget);
     expect(find.text('Status'), findsWidgets);
     expect(find.text('Quick sessions'), findsOneWidget);
     expect(find.byIcon(Icons.local_cafe_rounded), findsWidgets);
@@ -47,8 +50,10 @@ void main() {
 
     await tester.tap(find.text('General'));
     await tester.pumpAndSettle();
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Follow system'), findsOneWidget);
     expect(find.text('Start at login'), findsOneWidget);
-    expect(find.text('Hide StayAwake in Dock'), findsOneWidget);
+    expect(find.text('Hide ${Params.appName} in Dock'), findsOneWidget);
     expect(find.text('Default duration'), findsNothing);
   });
 
@@ -75,9 +80,19 @@ void main() {
 
     await tester.tap(find.text('通用'));
     await tester.pumpAndSettle();
+    expect(find.text('语言'), findsOneWidget);
+    expect(find.text('跟随系统'), findsOneWidget);
     expect(find.text('登录时启动'), findsOneWidget);
-    expect(find.text('在程序坞中隐藏 StayAwake'), findsOneWidget);
+    expect(find.text('在程序坞中隐藏 ${Params.appName}'), findsOneWidget);
     expect(find.text('默认时长'), findsNothing);
+
+    await tester.tap(find.text('跟随系统'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('English').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Follow system'), findsNothing);
   });
 }
 

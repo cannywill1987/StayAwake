@@ -7,6 +7,90 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+enum EnvEnum { dev, uat, prd }
+
+enum ChannelEnum { normal, mac, windows, ios, android, web }
+
+enum LoginTypeEnum { normal, email, phone, apple, google }
+
+class Params {
+  static const String appName = 'NoSleepy - Wake Keeper';
+  static const EnvEnum env = EnvEnum.prd;
+  static const String devBaseUrl = String.fromEnvironment(
+    'STAYAWAKE_DEV_BASE_URL',
+    defaultValue: 'http://127.0.0.1:9999',
+  );
+  static const String uatBaseUrl = String.fromEnvironment(
+    'STAYAWAKE_UAT_BASE_URL',
+    defaultValue: 'https://www.timerbell.com',
+  );
+  static const String prdBaseUrl = String.fromEnvironment(
+    'STAYAWAKE_PRD_BASE_URL',
+    defaultValue: 'https://www.timerbell.com',
+  );
+  static const String ossUrl = String.fromEnvironment(
+    'STAYAWAKE_OSS_URL',
+    defaultValue: 'http://oss.timerbell.com',
+  );
+  static const bool debugUseDevServer = bool.fromEnvironment(
+    'STAYAWAKE_DEBUG_USE_DEV_SERVER',
+    defaultValue: false,
+  );
+  static const bool isHttpCacheOn = false;
+  static const bool isMongoDbCacheOn = true;
+  static const int requestTimeout = 40000;
+  static const int connectTimeout = 40000;
+  static const int receiveTimeout = 40000;
+  static const int mongoDbTimeout = 10000;
+  static const String appScene = 'stayAwake';
+  static const String sysCode = appName;
+  static const String curVersion = '1.0.0';
+  static const String appPromotionSceneCode = 'app_cross_promotion';
+  static const String appPromotionListLocationCode = 'app_list';
+  static const ChannelEnum channelEnum = ChannelEnum.mac;
+  static const LoginTypeEnum loginTypeEnum = LoginTypeEnum.normal;
+  static Locale? local;
+
+  static bool get isDebug => kDebugMode || env == EnvEnum.dev;
+
+  static String get mBaseUrl {
+    if (kDebugMode && debugUseDevServer) return devBaseUrl;
+    return switch (env) {
+      EnvEnum.dev => devBaseUrl,
+      EnvEnum.uat => uatBaseUrl,
+      EnvEnum.prd => prdBaseUrl,
+    };
+  }
+
+  static String get mUrl {
+    if (env == EnvEnum.dev || (kDebugMode && debugUseDevServer)) {
+      return 'http://localhost:3000/web';
+    }
+    return '$mBaseUrl/web';
+  }
+}
+
+class Apis {
+  static const String commentModel = '/api/1/classes/CommentModel';
+  static const String getResourceList = '/api/resource/scene/getList';
+  static const String uploadFile = '/api/common/uploadFile';
+  static const String uploadImage = '/api/common/uploadImage';
+  static const String uploadOSSFile = '/api/common/uploadOSSFile';
+}
+
+class Urls {
+  static String get webHome => Params.mUrl;
+  static String get privacy => '${Params.mUrl}/privacy';
+  static String get terms => '${Params.mUrl}/terms';
+}
+
+class SharePreferenceKeys {
+  static const String languageMode = 'languageMode';
+  static const String deviceId = 'deviceId';
+  static const String userInfo = 'userInfo';
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,24 +107,80 @@ class StayAwakeApp extends StatelessWidget {
       brightness: Brightness.light,
     );
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'StayAwake',
-      supportedLocales: AppText.supportedLocales,
-      localizationsDelegates: const [
-        AppTextDelegate(),
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        scaffoldBackgroundColor: const Color(0xFFF6F7F4),
-        useMaterial3: true,
-        textTheme: Typography.blackCupertino,
-      ),
-      home: const StayAwakeHomePage(),
+    return ValueListenableBuilder<String>(
+      valueListenable: AppLocaleController.languageMode,
+      builder: (context, languageMode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: Params.appName,
+          locale: AppLocaleController.localeFor(languageMode),
+          supportedLocales: AppText.supportedLocales,
+          localizationsDelegates: const [
+            AppTextDelegate(),
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          theme: ThemeData(
+            colorScheme: colorScheme,
+            scaffoldBackgroundColor: const Color(0xFFF6F7F4),
+            useMaterial3: true,
+            textTheme: Typography.blackCupertino,
+          ),
+          home: const StayAwakeHomePage(),
+        );
+      },
     );
+  }
+}
+
+class AppLocaleController {
+  static const system = 'system';
+  static const english = 'en';
+  static const chinese = 'zh';
+  static const japanese = 'ja';
+  static const french = 'fr';
+  static const italian = 'it';
+  static const german = 'de';
+  static const spanish = 'es';
+  static const fixedLanguageModes = [
+    english,
+    chinese,
+    japanese,
+    french,
+    italian,
+    german,
+    spanish,
+  ];
+
+  static final ValueNotifier<String> languageMode = ValueNotifier<String>(
+    system,
+  );
+
+  static void setLanguageMode(String mode) {
+    languageMode.value = normalized(mode);
+  }
+
+  static String normalized(String? mode) {
+    return fixedLanguageModes.contains(mode) ? mode! : system;
+  }
+
+  static Locale? localeFor(String mode) {
+    final normalizedMode = normalized(mode);
+    return normalizedMode == system ? null : Locale(normalizedMode);
+  }
+
+  static String effectiveLanguageCode(String mode) {
+    final normalizedMode = normalized(mode);
+    if (normalizedMode != system) {
+      return normalizedMode;
+    }
+    final platformLocale = PlatformDispatcher.instance.locale;
+    final platformLanguage = platformLocale.languageCode.toLowerCase();
+    if (platformLanguage.startsWith('zh')) return chinese;
+    return fixedLanguageModes.contains(platformLanguage)
+        ? platformLanguage
+        : english;
   }
 }
 
@@ -49,7 +189,15 @@ class AppText {
 
   final Locale locale;
 
-  static const supportedLocales = [Locale('en'), Locale('zh')];
+  static const supportedLocales = [
+    Locale('en'),
+    Locale('zh'),
+    Locale('ja'),
+    Locale('fr'),
+    Locale('it'),
+    Locale('de'),
+    Locale('es'),
+  ];
 
   static AppText of(BuildContext context) {
     return Localizations.of<AppText>(context, AppText) ??
@@ -58,7 +206,12 @@ class AppText {
 
   bool get isZh => locale.languageCode.toLowerCase().startsWith('zh');
 
-  String pick(String en, String zh) => isZh ? zh : en;
+  String get languageCode => locale.languageCode.toLowerCase();
+
+  String pick(String en, String zh) {
+    final value = isZh ? zh : (_localizedStrings[languageCode]?[en] ?? en);
+    return value.replaceAll('StayAwake', Params.appName);
+  }
 
   String minutes(int value) => pick('$value minutes', '$value 分钟');
 
@@ -69,6 +222,575 @@ class AppText {
   String percent(int value) => '$value%';
 
   String get indefinite => pick('Indefinite', '无限期');
+
+  static const Map<String, Map<String, String>> _localizedStrings = {
+    'ja': {
+      'Automatic': '自動',
+      'Follow system': 'システムに合わせる',
+      'Chinese': '中国語',
+      'Japanese': '日本語',
+      'French': 'フランス語',
+      'Italian': 'イタリア語',
+      'German': 'ドイツ語',
+      'Spanish': 'スペイン語',
+      'Language': '言語',
+      'Status': '状態',
+      'Sessions': 'セッション',
+      'Stay Awake Rules': 'スリープ防止ルール',
+      'Settings': '設定',
+      'Inactive': '非アクティブ',
+      'Ending': '終了中',
+      'Indefinite': '無期限',
+      'Manual': '手動',
+      'Menu bar': 'メニューバー',
+      'Automation': '自動化',
+      'Native assertion active': 'ネイティブのスリープ防止が有効',
+      'Starting native assertion...': 'ネイティブのスリープ防止を開始中...',
+      'Stopping...': '停止中...',
+      'Native bridge unavailable': 'ネイティブブリッジを使用できません',
+      'Quick sessions': 'クイックセッション',
+      'Sleep behavior': 'スリープ動作',
+      'Screen saver': 'スクリーンセーバー',
+      'Stop keeping awake': 'スリープ防止を停止',
+      'Start 1 hour': '1時間開始',
+      'Menu bar controls enabled': 'メニューバー操作が有効',
+      'Power source': '電源',
+      'Activity': 'アクティビティ',
+      'Session active': 'セッション実行中',
+      'No active session': '実行中のセッションなし',
+      'Native bridge': 'ネイティブブリッジ',
+      'Status bar': 'ステータスバー',
+      'Session defaults': 'セッション既定値',
+      'General': '一般',
+      'System controls': 'システム制御',
+      'Triggers': 'トリガー',
+      'Disk wake': 'ディスク維持',
+      'Hotkeys': 'ホットキー',
+      'Notifications': '通知',
+      'Appearance': '外観',
+      'Statistics': '統計',
+      'Default duration': '既定の時間',
+      'Prevent display sleep': 'ディスプレイスリープを防止',
+      'Allow screen saver after idle': 'アイドル後のスクリーンセーバーを許可',
+      'Start at login': 'ログイン時に起動',
+      'Hide StayAwake in Dock': 'Dock で StayAwake を非表示',
+      'Reduce motion': 'モーションを減らす',
+      'Enable triggers': 'トリガーを有効化',
+      'Keep disk awake': 'ディスクを起動状態に保つ',
+      'Enable global shortcut': 'グローバルショートカットを有効化',
+      'Show notifications': '通知を表示',
+      'Menu bar icon': 'メニューバーアイコン',
+      'Collect statistics': '統計を収集',
+      'Local state file': 'ローカル状態ファイル',
+      'Start failed': '開始に失敗しました',
+      'Stop failed': '停止に失敗しました',
+      'Extended session': 'セッションを延長しました',
+      'Cancel': 'キャンセル',
+      'Clear': 'クリア',
+      'Choose target': '対象を選択',
+      'Use default': '既定を使用',
+      'Record shortcut': 'ショートカットを記録',
+      'Clear now': '今すぐクリア',
+      'Send feedback': 'フィードバックを送信',
+      'Feedback': 'フィードバック',
+      'User Feedback': 'ユーザーフィードバック',
+      'Tell us what happened or what you want improved.':
+          '問題や改善してほしい点をお知らせください。',
+      'Rating': '評価',
+      'Content': '内容',
+      'Describe your feedback': 'フィードバックを入力してください',
+      'Contact (optional)': '連絡先（任意）',
+      'Email or phone, optional': 'メールまたは電話（任意）',
+      'Feedback is saved with appScene: stayAwake.':
+          'フィードバックは appScene: stayAwake 付きで保存されます。',
+      'Server records for StayAwake feedback.':
+          'StayAwake のフィードバックをサーバーから表示します。',
+      'Submits feedback to the server.': 'フィードバックをサーバーに送信します。',
+      'Official reply': '公式返信',
+      'Reply time': '返信日時',
+      'Feedback saved locally': 'フィードバックをローカルに保存しました',
+      'Feedback submitted': 'フィードバックを送信しました',
+      'Feedback server unavailable; saved locally for retry.':
+          'サーバーを利用できないため、再試行用にローカル保存しました。',
+      'Feedback failed to save': 'フィードバックを保存できませんでした',
+      'Please enter feedback content.': 'フィードバック内容を入力してください。',
+      'Submit feedback': '送信',
+      'Discover Apps': 'アプリを見つける',
+      'Promoted apps are loaded from the app_cross_promotion resource scene.':
+          'おすすめアプリは app_cross_promotion リソースシーンから読み込まれます。',
+      'Promotion resource unavailable': 'プロモーションリソースを利用できません',
+      'Fallback examples are shown until the resource scene is configured.':
+          'リソースシーンが設定されるまでサンプルを表示します。',
+      'Category': 'カテゴリ',
+      'Size': 'サイズ',
+      'Download': 'ダウンロード',
+      'No download link configured.': 'ダウンロードリンクが未設定です。',
+      'Open link failed.': 'リンクを開けませんでした。',
+      'Create': '作成',
+      'Productivity': '生産性',
+      'Focus timer and daily planning.': '集中タイマーと日々の計画。',
+      'Manage focus sessions, tasks, and routine planning.':
+          '集中セッション、タスク、日課の計画を管理します。',
+      'Focus timer': '集中タイマー',
+      'Task planning': 'タスク計画',
+      'ACTIVE': '有効',
+      'IDLE': '待機',
+    },
+    'fr': {
+      'Automatic': 'Automatique',
+      'Follow system': 'Suivre le système',
+      'Chinese': 'Chinois',
+      'Japanese': 'Japonais',
+      'French': 'Français',
+      'Italian': 'Italien',
+      'German': 'Allemand',
+      'Spanish': 'Espagnol',
+      'Language': 'Langue',
+      'Status': 'État',
+      'Sessions': 'Sessions',
+      'Stay Awake Rules': 'Règles de veille',
+      'Settings': 'Réglages',
+      'Inactive': 'Inactif',
+      'Ending': 'Fin en cours',
+      'Indefinite': 'Indéfini',
+      'Manual': 'Manuel',
+      'Menu bar': 'Barre des menus',
+      'Automation': 'Automatisation',
+      'Native assertion active': 'Assertion native active',
+      'Starting native assertion...': 'Démarrage de l’assertion native...',
+      'Stopping...': 'Arrêt...',
+      'Native bridge unavailable': 'Pont natif indisponible',
+      'Quick sessions': 'Sessions rapides',
+      'Sleep behavior': 'Comportement de veille',
+      'Screen saver': 'Économiseur d’écran',
+      'Stop keeping awake': 'Arrêter le maintien éveillé',
+      'Start 1 hour': 'Démarrer 1 h',
+      'Menu bar controls enabled': 'Contrôles de la barre des menus activés',
+      'Power source': 'Source d’alimentation',
+      'Activity': 'Activité',
+      'Session active': 'Session active',
+      'No active session': 'Aucune session active',
+      'Native bridge': 'Pont natif',
+      'Status bar': 'Barre d’état',
+      'Session defaults': 'Valeurs par défaut',
+      'General': 'Général',
+      'System controls': 'Contrôles système',
+      'Triggers': 'Déclencheurs',
+      'Disk wake': 'Maintien du disque',
+      'Hotkeys': 'Raccourcis',
+      'Notifications': 'Notifications',
+      'Appearance': 'Apparence',
+      'Statistics': 'Statistiques',
+      'Default duration': 'Durée par défaut',
+      'Prevent display sleep': 'Empêcher la veille de l’écran',
+      'Allow screen saver after idle':
+          'Autoriser l’économiseur après inactivité',
+      'Start at login': 'Lancer à l’ouverture',
+      'Hide StayAwake in Dock': 'Masquer StayAwake dans le Dock',
+      'Reduce motion': 'Réduire les animations',
+      'Enable triggers': 'Activer les déclencheurs',
+      'Keep disk awake': 'Maintenir le disque éveillé',
+      'Enable global shortcut': 'Activer le raccourci global',
+      'Show notifications': 'Afficher les notifications',
+      'Menu bar icon': 'Icône de barre des menus',
+      'Collect statistics': 'Collecter les statistiques',
+      'Local state file': 'Fichier d’état local',
+      'Start failed': 'Échec du démarrage',
+      'Stop failed': 'Échec de l’arrêt',
+      'Extended session': 'Session prolongée',
+      'Cancel': 'Annuler',
+      'Clear': 'Effacer',
+      'Choose target': 'Choisir la cible',
+      'Use default': 'Utiliser par défaut',
+      'Record shortcut': 'Enregistrer le raccourci',
+      'Clear now': 'Effacer maintenant',
+      'Send feedback': 'Envoyer un avis',
+      'Feedback': 'Avis',
+      'User Feedback': 'Avis utilisateur',
+      'Tell us what happened or what you want improved.':
+          'Dites-nous ce qui s’est passé ou ce que vous souhaitez améliorer.',
+      'Rating': 'Note',
+      'Content': 'Contenu',
+      'Describe your feedback': 'Décrivez votre avis',
+      'Contact (optional)': 'Contact (facultatif)',
+      'Email or phone, optional': 'E-mail ou téléphone, facultatif',
+      'Feedback is saved with appScene: stayAwake.':
+          'L’avis est enregistré avec appScene: stayAwake.',
+      'Server records for StayAwake feedback.':
+          'Affiche les avis StayAwake enregistrés sur le serveur.',
+      'Submits feedback to the server.': 'Envoie l’avis au serveur.',
+      'Official reply': 'Réponse officielle',
+      'Reply time': 'Heure de réponse',
+      'Feedback saved locally': 'Avis enregistré localement',
+      'Feedback submitted': 'Avis envoyé',
+      'Feedback server unavailable; saved locally for retry.':
+          'Serveur indisponible ; avis enregistré localement pour réessai.',
+      'Feedback failed to save': 'Impossible d’enregistrer l’avis',
+      'Please enter feedback content.': 'Veuillez saisir votre avis.',
+      'Submit feedback': 'Envoyer',
+      'Discover Apps': 'Découvrir des apps',
+      'Promoted apps are loaded from the app_cross_promotion resource scene.':
+          'Les apps promues sont chargées depuis la scène de ressources app_cross_promotion.',
+      'Promotion resource unavailable': 'Ressource de promotion indisponible',
+      'Fallback examples are shown until the resource scene is configured.':
+          'Des exemples sont affichés tant que la scène de ressources n’est pas configurée.',
+      'Category': 'Catégorie',
+      'Size': 'Taille',
+      'Download': 'Télécharger',
+      'No download link configured.': 'Aucun lien de téléchargement configuré.',
+      'Open link failed.': 'Impossible d’ouvrir le lien.',
+      'Create': 'Créer',
+      'Productivity': 'Productivité',
+      'Focus timer and daily planning.':
+          'Minuteur de concentration et planification quotidienne.',
+      'Manage focus sessions, tasks, and routine planning.':
+          'Gérez les sessions de concentration, les tâches et les routines.',
+      'Focus timer': 'Minuteur de concentration',
+      'Task planning': 'Planification des tâches',
+      'ACTIVE': 'ACTIF',
+      'IDLE': 'INACTIF',
+    },
+    'it': {
+      'Automatic': 'Automatico',
+      'Follow system': 'Segui il sistema',
+      'Chinese': 'Cinese',
+      'Japanese': 'Giapponese',
+      'French': 'Francese',
+      'Italian': 'Italiano',
+      'German': 'Tedesco',
+      'Spanish': 'Spagnolo',
+      'Language': 'Lingua',
+      'Status': 'Stato',
+      'Sessions': 'Sessioni',
+      'Stay Awake Rules': 'Regole anti-sospensione',
+      'Settings': 'Impostazioni',
+      'Inactive': 'Inattivo',
+      'Ending': 'In chiusura',
+      'Indefinite': 'Senza limite',
+      'Manual': 'Manuale',
+      'Menu bar': 'Barra dei menu',
+      'Automation': 'Automazione',
+      'Native assertion active': 'Asserzione nativa attiva',
+      'Starting native assertion...': 'Avvio asserzione nativa...',
+      'Stopping...': 'Arresto...',
+      'Native bridge unavailable': 'Bridge nativo non disponibile',
+      'Quick sessions': 'Sessioni rapide',
+      'Sleep behavior': 'Comportamento sonno',
+      'Screen saver': 'Salvaschermo',
+      'Stop keeping awake': 'Interrompi mantenimento attivo',
+      'Start 1 hour': 'Avvia 1 ora',
+      'Menu bar controls enabled': 'Controlli nella barra menu attivi',
+      'Power source': 'Alimentazione',
+      'Activity': 'Attività',
+      'Session active': 'Sessione attiva',
+      'No active session': 'Nessuna sessione attiva',
+      'Native bridge': 'Bridge nativo',
+      'Status bar': 'Barra di stato',
+      'Session defaults': 'Predefiniti sessione',
+      'General': 'Generale',
+      'System controls': 'Controlli di sistema',
+      'Triggers': 'Attivatori',
+      'Disk wake': 'Disco attivo',
+      'Hotkeys': 'Scorciatoie',
+      'Notifications': 'Notifiche',
+      'Appearance': 'Aspetto',
+      'Statistics': 'Statistiche',
+      'Default duration': 'Durata predefinita',
+      'Prevent display sleep': 'Impedisci stop dello schermo',
+      'Allow screen saver after idle': 'Consenti salvaschermo dopo inattività',
+      'Start at login': 'Avvia al login',
+      'Hide StayAwake in Dock': 'Nascondi StayAwake nel Dock',
+      'Reduce motion': 'Riduci movimento',
+      'Enable triggers': 'Abilita attivatori',
+      'Keep disk awake': 'Mantieni disco attivo',
+      'Enable global shortcut': 'Abilita scorciatoia globale',
+      'Show notifications': 'Mostra notifiche',
+      'Menu bar icon': 'Icona barra menu',
+      'Collect statistics': 'Raccogli statistiche',
+      'Local state file': 'File stato locale',
+      'Start failed': 'Avvio non riuscito',
+      'Stop failed': 'Arresto non riuscito',
+      'Extended session': 'Sessione estesa',
+      'Cancel': 'Annulla',
+      'Clear': 'Cancella',
+      'Choose target': 'Scegli destinazione',
+      'Use default': 'Usa predefinito',
+      'Record shortcut': 'Registra scorciatoia',
+      'Clear now': 'Cancella ora',
+      'Send feedback': 'Invia feedback',
+      'Feedback': 'Feedback',
+      'User Feedback': 'Feedback utenti',
+      'Tell us what happened or what you want improved.':
+          'Dicci cosa è successo o cosa vorresti migliorare.',
+      'Rating': 'Valutazione',
+      'Content': 'Contenuto',
+      'Describe your feedback': 'Descrivi il tuo feedback',
+      'Contact (optional)': 'Contatto (facoltativo)',
+      'Email or phone, optional': 'Email o telefono, facoltativo',
+      'Feedback is saved with appScene: stayAwake.':
+          'Il feedback viene salvato con appScene: stayAwake.',
+      'Server records for StayAwake feedback.':
+          'Mostra i feedback StayAwake dal server.',
+      'Submits feedback to the server.': 'Invia il feedback al server.',
+      'Official reply': 'Risposta ufficiale',
+      'Reply time': 'Ora della risposta',
+      'Feedback saved locally': 'Feedback salvato localmente',
+      'Feedback submitted': 'Feedback inviato',
+      'Feedback server unavailable; saved locally for retry.':
+          'Server non disponibile; feedback salvato localmente per riprovare.',
+      'Feedback failed to save': 'Impossibile salvare il feedback',
+      'Please enter feedback content.': 'Inserisci il contenuto del feedback.',
+      'Submit feedback': 'Invia feedback',
+      'Discover Apps': 'Scopri app',
+      'Promoted apps are loaded from the app_cross_promotion resource scene.':
+          'Le app promosse vengono caricate dalla scena risorse app_cross_promotion.',
+      'Promotion resource unavailable': 'Risorsa promozionale non disponibile',
+      'Fallback examples are shown until the resource scene is configured.':
+          'Gli esempi vengono mostrati finché la scena risorse non è configurata.',
+      'Category': 'Categoria',
+      'Size': 'Dimensione',
+      'Download': 'Scarica',
+      'No download link configured.': 'Nessun link di download configurato.',
+      'Open link failed.': 'Impossibile aprire il link.',
+      'Create': 'Crea',
+      'Productivity': 'Produttività',
+      'Focus timer and daily planning.':
+          'Timer di concentrazione e pianificazione quotidiana.',
+      'Manage focus sessions, tasks, and routine planning.':
+          'Gestisci sessioni di concentrazione, attività e routine.',
+      'Focus timer': 'Timer concentrazione',
+      'Task planning': 'Pianificazione attività',
+      'ACTIVE': 'ATTIVO',
+      'IDLE': 'INATTIVO',
+    },
+    'de': {
+      'Automatic': 'Automatisch',
+      'Follow system': 'System folgen',
+      'Chinese': 'Chinesisch',
+      'Japanese': 'Japanisch',
+      'French': 'Französisch',
+      'Italian': 'Italienisch',
+      'German': 'Deutsch',
+      'Spanish': 'Spanisch',
+      'Language': 'Sprache',
+      'Status': 'Status',
+      'Sessions': 'Sitzungen',
+      'Stay Awake Rules': 'Wachhalteregeln',
+      'Settings': 'Einstellungen',
+      'Inactive': 'Inaktiv',
+      'Ending': 'Beendet',
+      'Indefinite': 'Unbegrenzt',
+      'Manual': 'Manuell',
+      'Menu bar': 'Menüleiste',
+      'Automation': 'Automatisierung',
+      'Native assertion active': 'Native Assertion aktiv',
+      'Starting native assertion...': 'Native Assertion wird gestartet...',
+      'Stopping...': 'Stoppt...',
+      'Native bridge unavailable': 'Native Bridge nicht verfügbar',
+      'Quick sessions': 'Schnellsitzungen',
+      'Sleep behavior': 'Ruhezustandsverhalten',
+      'Screen saver': 'Bildschirmschoner',
+      'Stop keeping awake': 'Wachhalten stoppen',
+      'Start 1 hour': '1 Stunde starten',
+      'Menu bar controls enabled': 'Menüleistensteuerung aktiv',
+      'Power source': 'Stromquelle',
+      'Activity': 'Aktivität',
+      'Session active': 'Sitzung aktiv',
+      'No active session': 'Keine aktive Sitzung',
+      'Native bridge': 'Native Bridge',
+      'Status bar': 'Statusleiste',
+      'Session defaults': 'Sitzungsstandard',
+      'General': 'Allgemein',
+      'System controls': 'Systemsteuerung',
+      'Triggers': 'Auslöser',
+      'Disk wake': 'Festplatte wach halten',
+      'Hotkeys': 'Kurzbefehle',
+      'Notifications': 'Mitteilungen',
+      'Appearance': 'Darstellung',
+      'Statistics': 'Statistiken',
+      'Default duration': 'Standarddauer',
+      'Prevent display sleep': 'Display-Ruhezustand verhindern',
+      'Allow screen saver after idle':
+          'Bildschirmschoner nach Inaktivität erlauben',
+      'Start at login': 'Beim Anmelden starten',
+      'Hide StayAwake in Dock': 'StayAwake im Dock ausblenden',
+      'Reduce motion': 'Bewegung reduzieren',
+      'Enable triggers': 'Auslöser aktivieren',
+      'Keep disk awake': 'Festplatte wach halten',
+      'Enable global shortcut': 'Globalen Kurzbefehl aktivieren',
+      'Show notifications': 'Mitteilungen anzeigen',
+      'Menu bar icon': 'Menüleistensymbol',
+      'Collect statistics': 'Statistiken sammeln',
+      'Local state file': 'Lokale Statusdatei',
+      'Start failed': 'Start fehlgeschlagen',
+      'Stop failed': 'Stop fehlgeschlagen',
+      'Extended session': 'Sitzung verlängert',
+      'Cancel': 'Abbrechen',
+      'Clear': 'Leeren',
+      'Choose target': 'Ziel wählen',
+      'Use default': 'Standard verwenden',
+      'Record shortcut': 'Kurzbefehl aufzeichnen',
+      'Clear now': 'Jetzt leeren',
+      'Send feedback': 'Feedback senden',
+      'Feedback': 'Feedback',
+      'User Feedback': 'Nutzerfeedback',
+      'Tell us what happened or what you want improved.':
+          'Sag uns, was passiert ist oder was verbessert werden soll.',
+      'Rating': 'Bewertung',
+      'Content': 'Inhalt',
+      'Describe your feedback': 'Beschreibe dein Feedback',
+      'Contact (optional)': 'Kontakt (optional)',
+      'Email or phone, optional': 'E-Mail oder Telefon, optional',
+      'Feedback is saved with appScene: stayAwake.':
+          'Feedback wird mit appScene: stayAwake gespeichert.',
+      'Server records for StayAwake feedback.':
+          'Zeigt StayAwake-Feedback vom Server an.',
+      'Submits feedback to the server.': 'Sendet Feedback an den Server.',
+      'Official reply': 'Offizielle Antwort',
+      'Reply time': 'Antwortzeit',
+      'Feedback saved locally': 'Feedback lokal gespeichert',
+      'Feedback submitted': 'Feedback gesendet',
+      'Feedback server unavailable; saved locally for retry.':
+          'Server nicht verfügbar; Feedback lokal zum Wiederholen gespeichert.',
+      'Feedback failed to save': 'Feedback konnte nicht gespeichert werden',
+      'Please enter feedback content.': 'Bitte Feedback eingeben.',
+      'Submit feedback': 'Feedback senden',
+      'Discover Apps': 'Apps entdecken',
+      'Promoted apps are loaded from the app_cross_promotion resource scene.':
+          'Beworbene Apps werden aus der Ressourcenszene app_cross_promotion geladen.',
+      'Promotion resource unavailable': 'Promotion-Ressource nicht verfügbar',
+      'Fallback examples are shown until the resource scene is configured.':
+          'Beispiele werden angezeigt, bis die Ressourcenszene konfiguriert ist.',
+      'Category': 'Kategorie',
+      'Size': 'Größe',
+      'Download': 'Laden',
+      'No download link configured.': 'Kein Download-Link konfiguriert.',
+      'Open link failed.': 'Link konnte nicht geöffnet werden.',
+      'Create': 'Erstellen',
+      'Productivity': 'Produktivität',
+      'Focus timer and daily planning.': 'Fokus-Timer und Tagesplanung.',
+      'Manage focus sessions, tasks, and routine planning.':
+          'Verwalte Fokussitzungen, Aufgaben und Routinen.',
+      'Focus timer': 'Fokus-Timer',
+      'Task planning': 'Aufgabenplanung',
+      'ACTIVE': 'AKTIV',
+      'IDLE': 'INAKTIV',
+    },
+    'es': {
+      'Automatic': 'Automático',
+      'Follow system': 'Seguir sistema',
+      'Chinese': 'Chino',
+      'Japanese': 'Japonés',
+      'French': 'Francés',
+      'Italian': 'Italiano',
+      'German': 'Alemán',
+      'Spanish': 'Español',
+      'Language': 'Idioma',
+      'Status': 'Estado',
+      'Sessions': 'Sesiones',
+      'Stay Awake Rules': 'Reglas anti-suspensión',
+      'Settings': 'Ajustes',
+      'Inactive': 'Inactivo',
+      'Ending': 'Finalizando',
+      'Indefinite': 'Indefinido',
+      'Manual': 'Manual',
+      'Menu bar': 'Barra de menús',
+      'Automation': 'Automatización',
+      'Native assertion active': 'Aserción nativa activa',
+      'Starting native assertion...': 'Iniciando aserción nativa...',
+      'Stopping...': 'Deteniendo...',
+      'Native bridge unavailable': 'Puente nativo no disponible',
+      'Quick sessions': 'Sesiones rápidas',
+      'Sleep behavior': 'Comportamiento de reposo',
+      'Screen saver': 'Salvapantallas',
+      'Stop keeping awake': 'Dejar de mantener activo',
+      'Start 1 hour': 'Iniciar 1 hora',
+      'Menu bar controls enabled': 'Controles de barra de menús activados',
+      'Power source': 'Fuente de energía',
+      'Activity': 'Actividad',
+      'Session active': 'Sesión activa',
+      'No active session': 'Sin sesión activa',
+      'Native bridge': 'Puente nativo',
+      'Status bar': 'Barra de estado',
+      'Session defaults': 'Valores de sesión',
+      'General': 'General',
+      'System controls': 'Controles del sistema',
+      'Triggers': 'Activadores',
+      'Disk wake': 'Disco activo',
+      'Hotkeys': 'Atajos',
+      'Notifications': 'Notificaciones',
+      'Appearance': 'Apariencia',
+      'Statistics': 'Estadísticas',
+      'Default duration': 'Duración predeterminada',
+      'Prevent display sleep': 'Evitar reposo de pantalla',
+      'Allow screen saver after idle':
+          'Permitir salvapantallas tras inactividad',
+      'Start at login': 'Iniciar al iniciar sesión',
+      'Hide StayAwake in Dock': 'Ocultar StayAwake en el Dock',
+      'Reduce motion': 'Reducir movimiento',
+      'Enable triggers': 'Activar disparadores',
+      'Keep disk awake': 'Mantener disco activo',
+      'Enable global shortcut': 'Activar atajo global',
+      'Show notifications': 'Mostrar notificaciones',
+      'Menu bar icon': 'Icono de barra de menús',
+      'Collect statistics': 'Recopilar estadísticas',
+      'Local state file': 'Archivo de estado local',
+      'Start failed': 'Error al iniciar',
+      'Stop failed': 'Error al detener',
+      'Extended session': 'Sesión extendida',
+      'Cancel': 'Cancelar',
+      'Clear': 'Borrar',
+      'Choose target': 'Elegir destino',
+      'Use default': 'Usar predeterminado',
+      'Record shortcut': 'Grabar atajo',
+      'Clear now': 'Borrar ahora',
+      'Send feedback': 'Enviar comentarios',
+      'Feedback': 'Comentarios',
+      'User Feedback': 'Comentarios de usuarios',
+      'Tell us what happened or what you want improved.':
+          'Cuéntanos qué pasó o qué quieres mejorar.',
+      'Rating': 'Valoración',
+      'Content': 'Contenido',
+      'Describe your feedback': 'Describe tus comentarios',
+      'Contact (optional)': 'Contacto (opcional)',
+      'Email or phone, optional': 'Email o teléfono, opcional',
+      'Feedback is saved with appScene: stayAwake.':
+          'Los comentarios se guardan con appScene: stayAwake.',
+      'Server records for StayAwake feedback.':
+          'Muestra comentarios de StayAwake desde el servidor.',
+      'Submits feedback to the server.': 'Envía los comentarios al servidor.',
+      'Official reply': 'Respuesta oficial',
+      'Reply time': 'Hora de respuesta',
+      'Feedback saved locally': 'Comentarios guardados localmente',
+      'Feedback submitted': 'Comentarios enviados',
+      'Feedback server unavailable; saved locally for retry.':
+          'Servidor no disponible; comentarios guardados localmente para reintentar.',
+      'Feedback failed to save': 'No se pudieron guardar los comentarios',
+      'Please enter feedback content.': 'Ingresa el contenido del comentario.',
+      'Submit feedback': 'Enviar',
+      'Discover Apps': 'Descubrir apps',
+      'Promoted apps are loaded from the app_cross_promotion resource scene.':
+          'Las apps promocionadas se cargan desde la escena de recursos app_cross_promotion.',
+      'Promotion resource unavailable': 'Recurso promocional no disponible',
+      'Fallback examples are shown until the resource scene is configured.':
+          'Se muestran ejemplos hasta que la escena de recursos esté configurada.',
+      'Category': 'Categoría',
+      'Size': 'Tamaño',
+      'Download': 'Descargar',
+      'No download link configured.': 'No hay enlace de descarga configurado.',
+      'Open link failed.': 'No se pudo abrir el enlace.',
+      'Create': 'Crear',
+      'Productivity': 'Productividad',
+      'Focus timer and daily planning.':
+          'Temporizador de enfoque y planificación diaria.',
+      'Manage focus sessions, tasks, and routine planning.':
+          'Gestiona sesiones de enfoque, tareas y rutinas.',
+      'Focus timer': 'Temporizador de enfoque',
+      'Task planning': 'Planificación de tareas',
+      'ACTIVE': 'ACTIVO',
+      'IDLE': 'INACTIVO',
+    },
+  };
 }
 
 String _navTitle(AppText text, NavigationSection section) {
@@ -77,6 +799,8 @@ String _navTitle(AppText text, NavigationSection section) {
     NavigationSection.sessions => text.pick('Sessions', '会话'),
     NavigationSection.rules => text.pick('Stay Awake Rules', '保持唤醒规则'),
     NavigationSection.settings => text.pick('Settings', '设置'),
+    NavigationSection.feedback => text.pick('User Feedback', '用户反馈'),
+    NavigationSection.promotions => text.pick('Discover Apps', '发现更多应用'),
   };
 }
 
@@ -202,8 +926,10 @@ class AppTextDelegate extends LocalizationsDelegate<AppText> {
 
   @override
   Future<AppText> load(Locale locale) {
-    final resolved = locale.languageCode == 'zh'
-        ? const Locale('zh')
+    final languageCode = locale.languageCode.toLowerCase();
+    final resolved =
+        AppLocaleController.fixedLanguageModes.contains(languageCode)
+        ? Locale(languageCode)
         : const Locale('en');
     return SynchronousFuture<AppText>(AppText(resolved));
   }
@@ -212,7 +938,14 @@ class AppTextDelegate extends LocalizationsDelegate<AppText> {
   bool shouldReload(AppTextDelegate old) => false;
 }
 
-enum NavigationSection { status, sessions, rules, settings }
+enum NavigationSection {
+  status,
+  sessions,
+  rules,
+  settings,
+  feedback,
+  promotions,
+}
 
 extension NavigationSectionX on NavigationSection {
   String get wireName => name;
@@ -246,6 +979,11 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
   ];
 
   final LocalStore _store = LocalStore();
+  final LocalFeedbackStore _feedbackStore = LocalFeedbackStore();
+  final RemoteFeedbackStore _remoteFeedbackStore = RemoteFeedbackStore(
+    baseUrl: Params.mBaseUrl,
+    appScene: Params.appScene,
+  );
   Timer? _ticker;
   AwakeSession _session = AwakeSession.inactive();
   PowerStatus _powerStatus = PowerStatus.unknown();
@@ -257,8 +995,10 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
   List<SessionLogEntry> _history = [];
   NavigationSection _selected = NavigationSection.status;
   String _nativeStatus = 'Ready';
+  bool? _powerProtectHelperInstalled;
   bool _loading = false;
   bool _busy = false;
+  bool _powerProtectHelperBusy = false;
 
   @override
   void initState() {
@@ -283,12 +1023,22 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       _history = snapshot.history;
       _loading = false;
     });
+    AppLocaleController.setLanguageMode(_settings.languageMode);
     await _syncFromNative();
+    await _refreshPowerProtectHelperStatus();
     await _syncPreferencesToNative();
     await _refreshPowerStatus(applyRules: true);
     await _refreshFrontmostApp(applyRules: true);
     await _refreshRunningApps(applyRules: true);
-    await _refreshDownloadActivity(applyRules: true);
+    if (_ruleById('download-trigger')?.enabled == true) {
+      await _refreshDownloadActivity(applyRules: true);
+    }
+    if (_settings.startSessionOnLaunch && !_session.isActive) {
+      final duration = _settings.customDurationMinutes >= 480
+          ? null
+          : Duration(minutes: _settings.customDurationMinutes);
+      await _startSession(duration, source: SessionSource.automation);
+    }
   }
 
   Future<dynamic> _handleNativeCall(MethodCall call) async {
@@ -303,8 +1053,15 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       case 'stopSession':
         await _stopSession(reason: 'Stopped from menu bar');
         return null;
+      case 'extendSession':
+        final seconds = call.arguments is int ? call.arguments as int : null;
+        if (seconds != null) {
+          await _extendSession(Duration(seconds: seconds));
+        }
+        return null;
       case 'nativeStatusChanged':
         await _syncFromNative();
+        await _refreshPowerProtectHelperStatus();
         return null;
       case 'openSection':
         final section = NavigationSectionX.fromWire(call.arguments?.toString());
@@ -328,6 +1085,10 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
           await _updateRule(rule, enabled);
         }
         return null;
+      case 'selectRunningApp':
+        final args = call.arguments as Map?;
+        await _handleNativeRunningAppSelection(args);
+        return null;
       default:
         return null;
     }
@@ -341,16 +1102,43 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       'allowSystemSleepWhenDisplayOff' => _settings.copyWith(
         allowSystemSleepWhenDisplayOff: value,
       ),
+      'allowScreenLock' => _settings.copyWith(allowScreenLock: value),
       'lockScreenAfterIdle' => _settings.copyWith(lockScreenAfterIdle: value),
       'moveCursorAfterIdle' => _settings.copyWith(moveCursorAfterIdle: value),
       'triggersEnabled' => _settings.copyWith(triggersEnabled: value),
       'keepDiskAwake' => _settings.copyWith(keepDiskAwake: value),
+      'hideHelperApps' => _settings.copyWith(hideHelperApps: value),
+      'globalHotkeyEnabled' => _settings.copyWith(globalHotkeyEnabled: value),
       'showRemainingSessionTime' => _settings.copyWith(
         showRemainingSessionTime: value,
       ),
       _ => _settings,
     };
     await _updateSettings(nextSettings);
+  }
+
+  Future<void> _handleNativeRunningAppSelection(
+    Map<dynamic, dynamic>? args,
+  ) async {
+    final name = args?['name']?.toString() ?? '';
+    final bundleIdentifier = args?['bundleIdentifier']?.toString() ?? '';
+    if (name.isEmpty || bundleIdentifier.isEmpty) return;
+
+    final appRule = _ruleById('app-trigger');
+    setState(() {
+      _settings = _settings.copyWith(
+        appTriggerName: name,
+        appTriggerBundleId: bundleIdentifier,
+      );
+      if (appRule != null) {
+        _rules = [
+          for (final item in _rules)
+            item.id == appRule.id ? item.copyWith(enabled: true) : item,
+        ];
+      }
+    });
+    await _persist();
+    await _applyAppRules();
   }
 
   Future<void> _syncFromNative() async {
@@ -360,6 +1148,7 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       );
       if (!mounted || result == null) return;
       final active = result['active'] == true;
+      final nativeStartAtLogin = result['startAtLogin'] == true;
       final endsAtSeconds = result['endsAt'];
       DateTime? nativeEndsAt;
       if (endsAtSeconds is num) {
@@ -368,8 +1157,13 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
         );
       }
 
+      final shouldPersistSettings =
+          _settings.startAtLogin != nativeStartAtLogin;
       setState(() {
         _nativeStatus = active ? 'Native assertion active' : 'Ready';
+        if (shouldPersistSettings) {
+          _settings = _settings.copyWith(startAtLogin: nativeStartAtLogin);
+        }
         if (active && !_session.isActive) {
           _session = AwakeSession(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -384,6 +1178,9 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
           _session = AwakeSession.inactive();
         }
       });
+      if (shouldPersistSettings) {
+        await _persist();
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -408,6 +1205,23 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       if (!mounted) return;
       setState(() {
         _powerStatus = PowerStatus.unknown();
+      });
+    }
+  }
+
+  Future<void> _refreshPowerProtectHelperStatus() async {
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'getPowerProtectHelperStatus',
+      );
+      if (!mounted || result == null) return;
+      setState(() {
+        _powerProtectHelperInstalled = result['installed'] == true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _powerProtectHelperInstalled = null;
       });
     }
   }
@@ -445,7 +1259,9 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       _refreshPowerStatus(applyRules: true);
       _refreshFrontmostApp(applyRules: true);
       _refreshRunningApps(applyRules: true);
-      _refreshDownloadActivity(applyRules: true);
+      if (_ruleById('download-trigger')?.enabled == true) {
+        _refreshDownloadActivity(applyRules: true);
+      }
     }
   }
 
@@ -482,6 +1298,53 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
     );
     if (isTargetRunning && !_session.isActive) {
       await _startSession(null, source: SessionSource.automation);
+    }
+  }
+
+  Future<StayAwakeFeedbackRecord?> _submitFeedbackDraft(
+    _FeedbackDraft draft,
+  ) async {
+    final text = AppText.of(context);
+    final entry = StayAwakeFeedbackEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      appScene: Params.appScene,
+      rating: draft.rating,
+      content: draft.content,
+      contact: draft.contact,
+      language: AppLocaleController.effectiveLanguageCode(
+        _settings.languageMode,
+      ),
+      platform: Platform.operatingSystem,
+      status: 0,
+      createdAt: DateTime.now(),
+    );
+
+    try {
+      await _remoteFeedbackStore.submit(entry);
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(text.pick('Feedback submitted', '反馈已提交'))),
+      );
+      return StayAwakeFeedbackRecord.fromEntry(entry);
+    } catch (error) {
+      try {
+        await _feedbackStore.append(entry);
+      } catch (_) {
+        // Local fallback failed too; surface the server failure below.
+      }
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            text.pick(
+              'Feedback server unavailable; saved locally for retry.',
+              '服务器暂不可用，反馈已暂存到本机，稍后可重试。',
+            ),
+          ),
+        ),
+      );
+      debugPrint('StayAwake feedback submit failed: $error');
+      return null;
     }
   }
 
@@ -575,9 +1438,9 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
 
     try {
       await _channel.invokeMethod('startSession', {
+        ..._nativePreferencesPayload(),
         'durationSeconds': duration?.inSeconds,
-        'preventDisplaySleep': _settings.preventDisplaySleep,
-        'allowScreenSaver': _settings.allowScreenSaver,
+        'source': source.name,
       });
       if (!mounted) return;
       final text = AppText.of(context);
@@ -616,6 +1479,47 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
         ),
       );
     }
+  }
+
+  Future<void> _extendSession(Duration extension) async {
+    if (!_session.isActive || _session.endsAt == null) {
+      return;
+    }
+    final nextEndsAt = _session.endsAt!.add(extension);
+    final remaining = nextEndsAt.difference(DateTime.now());
+    if (remaining.isNegative) return;
+
+    final nextSession = AwakeSession(
+      id: _session.id,
+      startedAt: _session.startedAt,
+      endsAt: nextEndsAt,
+      preventDisplaySleep: _session.preventDisplaySleep,
+      allowScreenSaver: _session.allowScreenSaver,
+      source: _session.source,
+    );
+    setState(() {
+      _session = nextSession;
+      _nativeStatus = 'Native assertion active';
+    });
+
+    await _channel.invokeMethod('startSession', {
+      ..._nativePreferencesPayload(),
+      'durationSeconds': remaining.inSeconds,
+      'source': _session.source.name,
+    });
+    if (!mounted) return;
+    final text = AppText.of(context);
+    await _addHistory(
+      SessionLogEntry(
+        timestamp: DateTime.now(),
+        title: text.pick('Extended session', '已延长会话'),
+        detail: text.pick(
+          'Added ${extension.inMinutes} minutes.',
+          '已增加 ${extension.inMinutes} 分钟。',
+        ),
+        kind: LogKind.start,
+      ),
+    );
   }
 
   Future<void> _stopSession({required String reason}) async {
@@ -680,12 +1584,129 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
   }
 
   Future<void> _updateSettings(AppSettings settings) async {
+    AppLocaleController.setLanguageMode(settings.languageMode);
     setState(() {
       _settings = settings;
     });
     await _persist();
     await _syncPreferencesToNative();
     await _applyAppRules();
+  }
+
+  Future<void> _recordGlobalHotkey() async {
+    final result = await _channel.invokeMapMethod<String, dynamic>(
+      'recordGlobalHotkey',
+    );
+    if (result == null) return;
+    await _updateSettings(
+      _settings.copyWith(
+        globalHotkeyEnabled: true,
+        globalHotkeyLabel:
+            result['label']?.toString() ?? _settings.globalHotkeyLabel,
+        globalHotkeyKeyCode: (result['keyCode'] as num?)?.round(),
+        globalHotkeyModifiers: (result['modifiers'] as num?)?.round(),
+      ),
+    );
+  }
+
+  Future<void> _chooseDiskWakePath() async {
+    final result = await _channel.invokeMapMethod<String, dynamic>(
+      'chooseDiskWakePath',
+    );
+    if (result == null) return;
+    await _updateSettings(
+      _settings.copyWith(
+        diskWakePath: result['path']?.toString() ?? '',
+        diskWakeName: result['name']?.toString() ?? '',
+      ),
+    );
+  }
+
+  Future<void> _clearDiskWakePath() async {
+    await _updateSettings(
+      _settings.copyWith(diskWakePath: '', diskWakeName: ''),
+    );
+  }
+
+  Future<void> _clearDeliveredNotifications() async {
+    await _channel.invokeMethod('clearDeliveredNotifications');
+  }
+
+  Future<void> _installPowerProtectHelper() async {
+    final text = AppText.of(context);
+    setState(() => _powerProtectHelperBusy = true);
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'installPowerProtectHelper',
+      );
+      if (!mounted) return;
+      final installed = result?['installed'] == true;
+      setState(() => _powerProtectHelperInstalled = installed);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            installed
+                ? text.pick('Closed-display helper is installed.', '合盖助手已安装。')
+                : text.pick(
+                    'Closed-display helper was not installed.',
+                    '合盖助手未安装。',
+                  ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            text.pick('Helper installation failed: $error', '助手安装失败：$error'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _powerProtectHelperBusy = false);
+      }
+    }
+  }
+
+  Future<void> _removePowerProtectHelper() async {
+    final text = AppText.of(context);
+    setState(() => _powerProtectHelperBusy = true);
+    try {
+      final result = await _channel.invokeMapMethod<String, dynamic>(
+        'removePowerProtectHelper',
+      );
+      if (!mounted) return;
+      final installed = result?['installed'] == true;
+      final success = result?['success'] == true;
+      setState(() => _powerProtectHelperInstalled = installed);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success && !installed
+                ? text.pick('Closed-display helper was removed.', '合盖助手已移除。')
+                : text.pick(
+                    'Closed-display helper was not removed.',
+                    '合盖助手未移除。',
+                  ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            text.pick('Helper removal failed: $error', '助手移除失败：$error'),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _powerProtectHelperBusy = false);
+      }
+    }
   }
 
   Future<void> _updateRule(AwakeRule rule, bool enabled) async {
@@ -699,7 +1720,11 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
     await _syncPreferencesToNative();
     await _applyPowerRules();
     await _applyAppRules();
-    await _applyDownloadRules();
+    if (rule.id == 'download-trigger' && enabled) {
+      await _refreshDownloadActivity(applyRules: true);
+    } else {
+      await _applyDownloadRules();
+    }
   }
 
   Future<void> _clearHistory() async {
@@ -711,13 +1736,23 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
 
   Future<void> _syncPreferencesToNative() async {
     try {
-      await _channel.invokeMethod('syncPreferences', {
-        ..._settings.toJson(),
-        'rules': {for (final rule in _rules) rule.id: rule.enabled},
-      });
+      await _channel.invokeMethod(
+        'syncPreferences',
+        _nativePreferencesPayload(),
+      );
     } catch (_) {
       // The Flutter UI remains the source of truth when the native menu is not available.
     }
+  }
+
+  Map<String, dynamic> _nativePreferencesPayload() {
+    return {
+      ..._settings.toJson(),
+      'effectiveLanguageCode': AppLocaleController.effectiveLanguageCode(
+        _settings.languageMode,
+      ),
+      'rules': {for (final rule in _rules) rule.id: rule.enabled},
+    };
   }
 
   AwakeRule? _ruleById(String? id) {
@@ -753,6 +1788,13 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
                       title: title,
                       session: _session,
                       nativeStatus: _nativeStatusLabel(text, _nativeStatus),
+                      languageMode: _settings.languageMode,
+                      onFeedbackPressed: () => setState(
+                        () => _selected = NavigationSection.feedback,
+                      ),
+                      onLanguageChanged: (value) => _updateSettings(
+                        _settings.copyWith(languageMode: value),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     AnimatedSwitcher(
@@ -838,8 +1880,22 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       NavigationSection.settings => _SettingsPage(
         settings: _settings,
         storePath: _store.pathLabel,
+        powerProtectHelperInstalled: _powerProtectHelperInstalled,
+        powerProtectHelperBusy: _powerProtectHelperBusy,
         onChanged: _updateSettings,
+        onRecordGlobalHotkey: _recordGlobalHotkey,
+        onChooseDiskWakePath: _chooseDiskWakePath,
+        onClearDiskWakePath: _clearDiskWakePath,
+        onClearDeliveredNotifications: _clearDeliveredNotifications,
+        onRefreshPowerProtectHelper: _refreshPowerProtectHelperStatus,
+        onInstallPowerProtectHelper: _installPowerProtectHelper,
+        onRemovePowerProtectHelper: _removePowerProtectHelper,
       ),
+      NavigationSection.feedback => _FeedbackListPage(
+        store: _remoteFeedbackStore,
+        onSubmitFeedback: _submitFeedbackDraft,
+      ),
+      NavigationSection.promotions => const _AppPromotionPage(),
     };
   }
 
@@ -1097,6 +2153,7 @@ class AppSettings {
     required this.hideInDock,
     required this.reduceMotion,
     required this.allowSystemSleepWhenDisplayOff,
+    required this.allowScreenLock,
     required this.forceSleepEndsSession,
     required this.lockScreenAfterIdle,
     required this.lockWhenDisplayOff,
@@ -1107,6 +2164,12 @@ class AppSettings {
     required this.triggersEnabled,
     required this.keepDiskAwake,
     required this.diskWakeIntervalSeconds,
+    required this.diskWakePath,
+    required this.diskWakeName,
+    required this.globalHotkeyEnabled,
+    required this.globalHotkeyKeyCode,
+    required this.globalHotkeyModifiers,
+    required this.globalHotkeyLabel,
     required this.showRemainingSessionTime,
     required this.showSessionDetailsInMenu,
     required this.showDiskDetailsInMenu,
@@ -1119,6 +2182,7 @@ class AppSettings {
     required this.playStartStopSound,
     required this.playExtendSound,
     required this.clearDeliveredNotifications,
+    required this.languageMode,
     required this.menuIconStyle,
     required this.activeSessionHotkey,
     required this.menuHotkey,
@@ -1140,6 +2204,7 @@ class AppSettings {
       hideInDock: true,
       reduceMotion: false,
       allowSystemSleepWhenDisplayOff: true,
+      allowScreenLock: false,
       forceSleepEndsSession: false,
       lockScreenAfterIdle: false,
       lockWhenDisplayOff: false,
@@ -1150,6 +2215,12 @@ class AppSettings {
       triggersEnabled: true,
       keepDiskAwake: false,
       diskWakeIntervalSeconds: 10,
+      diskWakePath: '',
+      diskWakeName: '',
+      globalHotkeyEnabled: false,
+      globalHotkeyKeyCode: 1,
+      globalHotkeyModifiers: 6400,
+      globalHotkeyLabel: '⌃⌥⌘S',
       showRemainingSessionTime: false,
       showSessionDetailsInMenu: true,
       showDiskDetailsInMenu: false,
@@ -1162,6 +2233,7 @@ class AppSettings {
       playStartStopSound: true,
       playExtendSound: true,
       clearDeliveredNotifications: true,
+      languageMode: AppLocaleController.system,
       menuIconStyle: 'Pill',
       activeSessionHotkey: 'End current and start new',
       menuHotkey: 'Esc closes menu',
@@ -1182,6 +2254,7 @@ class AppSettings {
   final bool hideInDock;
   final bool reduceMotion;
   final bool allowSystemSleepWhenDisplayOff;
+  final bool allowScreenLock;
   final bool forceSleepEndsSession;
   final bool lockScreenAfterIdle;
   final bool lockWhenDisplayOff;
@@ -1192,6 +2265,12 @@ class AppSettings {
   final bool triggersEnabled;
   final bool keepDiskAwake;
   final int diskWakeIntervalSeconds;
+  final String diskWakePath;
+  final String diskWakeName;
+  final bool globalHotkeyEnabled;
+  final int globalHotkeyKeyCode;
+  final int globalHotkeyModifiers;
+  final String globalHotkeyLabel;
   final bool showRemainingSessionTime;
   final bool showSessionDetailsInMenu;
   final bool showDiskDetailsInMenu;
@@ -1204,6 +2283,7 @@ class AppSettings {
   final bool playStartStopSound;
   final bool playExtendSound;
   final bool clearDeliveredNotifications;
+  final String languageMode;
   final String menuIconStyle;
   final String activeSessionHotkey;
   final String menuHotkey;
@@ -1223,6 +2303,7 @@ class AppSettings {
     bool? hideInDock,
     bool? reduceMotion,
     bool? allowSystemSleepWhenDisplayOff,
+    bool? allowScreenLock,
     bool? forceSleepEndsSession,
     bool? lockScreenAfterIdle,
     bool? lockWhenDisplayOff,
@@ -1233,6 +2314,12 @@ class AppSettings {
     bool? triggersEnabled,
     bool? keepDiskAwake,
     int? diskWakeIntervalSeconds,
+    String? diskWakePath,
+    String? diskWakeName,
+    bool? globalHotkeyEnabled,
+    int? globalHotkeyKeyCode,
+    int? globalHotkeyModifiers,
+    String? globalHotkeyLabel,
     bool? showRemainingSessionTime,
     bool? showSessionDetailsInMenu,
     bool? showDiskDetailsInMenu,
@@ -1245,6 +2332,7 @@ class AppSettings {
     bool? playStartStopSound,
     bool? playExtendSound,
     bool? clearDeliveredNotifications,
+    String? languageMode,
     String? menuIconStyle,
     String? activeSessionHotkey,
     String? menuHotkey,
@@ -1266,6 +2354,7 @@ class AppSettings {
       reduceMotion: reduceMotion ?? this.reduceMotion,
       allowSystemSleepWhenDisplayOff:
           allowSystemSleepWhenDisplayOff ?? this.allowSystemSleepWhenDisplayOff,
+      allowScreenLock: allowScreenLock ?? this.allowScreenLock,
       forceSleepEndsSession:
           forceSleepEndsSession ?? this.forceSleepEndsSession,
       lockScreenAfterIdle: lockScreenAfterIdle ?? this.lockScreenAfterIdle,
@@ -1281,6 +2370,13 @@ class AppSettings {
       keepDiskAwake: keepDiskAwake ?? this.keepDiskAwake,
       diskWakeIntervalSeconds:
           diskWakeIntervalSeconds ?? this.diskWakeIntervalSeconds,
+      diskWakePath: diskWakePath ?? this.diskWakePath,
+      diskWakeName: diskWakeName ?? this.diskWakeName,
+      globalHotkeyEnabled: globalHotkeyEnabled ?? this.globalHotkeyEnabled,
+      globalHotkeyKeyCode: globalHotkeyKeyCode ?? this.globalHotkeyKeyCode,
+      globalHotkeyModifiers:
+          globalHotkeyModifiers ?? this.globalHotkeyModifiers,
+      globalHotkeyLabel: globalHotkeyLabel ?? this.globalHotkeyLabel,
       showRemainingSessionTime:
           showRemainingSessionTime ?? this.showRemainingSessionTime,
       showSessionDetailsInMenu:
@@ -1299,6 +2395,9 @@ class AppSettings {
       playExtendSound: playExtendSound ?? this.playExtendSound,
       clearDeliveredNotifications:
           clearDeliveredNotifications ?? this.clearDeliveredNotifications,
+      languageMode: AppLocaleController.normalized(
+        languageMode ?? this.languageMode,
+      ),
       menuIconStyle: menuIconStyle ?? this.menuIconStyle,
       activeSessionHotkey: activeSessionHotkey ?? this.activeSessionHotkey,
       menuHotkey: menuHotkey ?? this.menuHotkey,
@@ -1323,6 +2422,7 @@ class AppSettings {
       'hideInDock': hideInDock,
       'reduceMotion': reduceMotion,
       'allowSystemSleepWhenDisplayOff': allowSystemSleepWhenDisplayOff,
+      'allowScreenLock': allowScreenLock,
       'forceSleepEndsSession': forceSleepEndsSession,
       'lockScreenAfterIdle': lockScreenAfterIdle,
       'lockWhenDisplayOff': lockWhenDisplayOff,
@@ -1333,6 +2433,12 @@ class AppSettings {
       'triggersEnabled': triggersEnabled,
       'keepDiskAwake': keepDiskAwake,
       'diskWakeIntervalSeconds': diskWakeIntervalSeconds,
+      'diskWakePath': diskWakePath,
+      'diskWakeName': diskWakeName,
+      'globalHotkeyEnabled': globalHotkeyEnabled,
+      'globalHotkeyKeyCode': globalHotkeyKeyCode,
+      'globalHotkeyModifiers': globalHotkeyModifiers,
+      'globalHotkeyLabel': globalHotkeyLabel,
       'showRemainingSessionTime': showRemainingSessionTime,
       'showSessionDetailsInMenu': showSessionDetailsInMenu,
       'showDiskDetailsInMenu': showDiskDetailsInMenu,
@@ -1345,6 +2451,7 @@ class AppSettings {
       'playStartStopSound': playStartStopSound,
       'playExtendSound': playExtendSound,
       'clearDeliveredNotifications': clearDeliveredNotifications,
+      'languageMode': languageMode,
       'menuIconStyle': menuIconStyle,
       'activeSessionHotkey': activeSessionHotkey,
       'menuHotkey': menuHotkey,
@@ -1368,6 +2475,7 @@ class AppSettings {
       reduceMotion: json['reduceMotion'] == true,
       allowSystemSleepWhenDisplayOff:
           json['allowSystemSleepWhenDisplayOff'] != false,
+      allowScreenLock: json['allowScreenLock'] == true,
       forceSleepEndsSession: json['forceSleepEndsSession'] == true,
       lockScreenAfterIdle: json['lockScreenAfterIdle'] == true,
       lockWhenDisplayOff: json['lockWhenDisplayOff'] == true,
@@ -1385,6 +2493,14 @@ class AppSettings {
       diskWakeIntervalSeconds:
           (json['diskWakeIntervalSeconds'] as num?)?.round().clamp(5, 120) ??
           10,
+      diskWakePath: json['diskWakePath']?.toString() ?? '',
+      diskWakeName: json['diskWakeName']?.toString() ?? '',
+      globalHotkeyEnabled: json['globalHotkeyEnabled'] == true,
+      globalHotkeyKeyCode:
+          (json['globalHotkeyKeyCode'] as num?)?.round().clamp(0, 255) ?? 1,
+      globalHotkeyModifiers:
+          (json['globalHotkeyModifiers'] as num?)?.round() ?? 6400,
+      globalHotkeyLabel: json['globalHotkeyLabel']?.toString() ?? '⌃⌥⌘S',
       showRemainingSessionTime: json['showRemainingSessionTime'] == true,
       showSessionDetailsInMenu: json['showSessionDetailsInMenu'] != false,
       showDiskDetailsInMenu: json['showDiskDetailsInMenu'] == true,
@@ -1398,6 +2514,9 @@ class AppSettings {
       playStartStopSound: json['playStartStopSound'] != false,
       playExtendSound: json['playExtendSound'] != false,
       clearDeliveredNotifications: json['clearDeliveredNotifications'] != false,
+      languageMode: AppLocaleController.normalized(
+        json['languageMode']?.toString(),
+      ),
       menuIconStyle: json['menuIconStyle']?.toString() ?? 'Pill',
       activeSessionHotkey:
           json['activeSessionHotkey']?.toString() ??
@@ -1682,6 +2801,995 @@ class LocalStore {
   }
 }
 
+class StayAwakeFeedbackEntry {
+  const StayAwakeFeedbackEntry({
+    required this.id,
+    required this.appScene,
+    required this.rating,
+    required this.content,
+    required this.contact,
+    required this.language,
+    required this.platform,
+    required this.status,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String appScene;
+  final int rating;
+  final String content;
+  final String contact;
+  final String language;
+  final String platform;
+  final int status;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'appScene': appScene,
+      'title': 'StayAwake feedback',
+      'rating': rating,
+      'content': content,
+      'contact': contact,
+      'avatar': '',
+      'username': '',
+      'uid': '',
+      'device_id': '',
+      'countryCode': language,
+      'language': language,
+      'platform': platform,
+      'market': 'Mac',
+      'storeReviewPrompted': false,
+      'status': status,
+      'create_time': createdAt.millisecondsSinceEpoch,
+      'createdAt': createdAt.toIso8601String(),
+      'source': 'topRightFeedback',
+    };
+  }
+}
+
+class StayAwakeFeedbackRecord {
+  const StayAwakeFeedbackRecord({
+    required this.objectId,
+    required this.appScene,
+    required this.title,
+    required this.content,
+    required this.rating,
+    required this.contact,
+    required this.platform,
+    required this.market,
+    required this.status,
+    required this.officialReply,
+    required this.officialReplyAt,
+    required this.handledAt,
+    required this.createdAt,
+  });
+
+  factory StayAwakeFeedbackRecord.fromEntry(StayAwakeFeedbackEntry entry) {
+    return StayAwakeFeedbackRecord(
+      objectId: entry.id,
+      appScene: entry.appScene,
+      title: 'StayAwake feedback',
+      content: entry.content,
+      rating: entry.rating,
+      contact: entry.contact,
+      platform: entry.platform,
+      market: 'Mac',
+      status: entry.status,
+      officialReply: '',
+      officialReplyAt: 0,
+      handledAt: 0,
+      createdAt: entry.createdAt,
+    );
+  }
+
+  factory StayAwakeFeedbackRecord.fromJson(Map<String, dynamic> json) {
+    return StayAwakeFeedbackRecord(
+      objectId: (json['_id'] ?? json['objectId'] ?? '').toString(),
+      appScene: (json['appScene'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      content: (json['content'] ?? '').toString(),
+      rating: json['rating'] is int
+          ? json['rating'] as int
+          : int.tryParse('${json['rating']}') ?? 0,
+      contact: (json['contact'] ?? '').toString(),
+      platform: (json['platform'] ?? '').toString(),
+      market: (json['market'] ?? '').toString(),
+      status: json['status'] is int
+          ? json['status'] as int
+          : int.tryParse('${json['status']}') ?? 0,
+      officialReply: (json['officialReply'] ?? '').toString(),
+      officialReplyAt: _jsonInt(json['officialReplyAt']),
+      handledAt: _jsonInt(json['handledAt']),
+      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()),
+    );
+  }
+
+  final String objectId;
+  final String appScene;
+  final String title;
+  final String content;
+  final int rating;
+  final String contact;
+  final String platform;
+  final String market;
+  final int status;
+  final String officialReply;
+  final int officialReplyAt;
+  final int handledAt;
+  final DateTime? createdAt;
+}
+
+int _jsonInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('$value') ?? 0;
+}
+
+class RemoteFeedbackStore {
+  const RemoteFeedbackStore({required this.baseUrl, required this.appScene});
+
+  final String baseUrl;
+  final String appScene;
+
+  Uri get _commentModelUri {
+    final normalizedBase = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+    return Uri.parse(normalizedBase).replace(
+      path:
+          '${Uri.parse(normalizedBase).path}${Apis.commentModel.substring(1)}',
+      queryParameters: const {
+        '_ApplicationId': 'applicationId',
+        '_RestKey': 'applicationKey',
+        '_ClientVersion': 'dart1.0.0',
+      },
+    );
+  }
+
+  Future<void> submit(StayAwakeFeedbackEntry entry) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.postUrl(_commentModelUri);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(entry.toJson()));
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          'Feedback HTTP ${response.statusCode}: $body',
+          uri: _commentModelUri,
+        );
+      }
+      if (body.isNotEmpty) {
+        final decoded = jsonDecode(body);
+        if (decoded is Map && decoded['success'] == false) {
+          throw StateError(decoded['message'] ?? 'Feedback submit failed');
+        }
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<List<StayAwakeFeedbackRecord>> list({int limit = 50}) async {
+    final uri = _commentModelUri.replace(
+      queryParameters: {
+        ..._commentModelUri.queryParameters,
+        'order': 'create_time',
+        'orderValue': '-1',
+        'limit': '$limit',
+      },
+    );
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.getUrl(uri);
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException('Feedback list HTTP ${response.statusCode}: $body');
+      }
+      final decoded = jsonDecode(body);
+      if (decoded is! Map || decoded['success'] == false) {
+        throw StateError('Feedback list failed');
+      }
+      final data = decoded['data'];
+      final results = data is Map ? data['results'] : null;
+      if (results is! List) return const [];
+      final records = [
+        for (final item in results)
+          if (item is Map<String, dynamic>)
+            StayAwakeFeedbackRecord.fromJson(item),
+      ].where(_isStayAwakeRecord).toList();
+      return records..sort((left, right) {
+        final leftTime =
+            left.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final rightTime =
+            right.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return rightTime.compareTo(leftTime);
+      });
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  bool _isStayAwakeRecord(StayAwakeFeedbackRecord record) {
+    if (record.appScene == appScene) return true;
+    return record.title.toLowerCase().contains('stayawake');
+  }
+}
+
+class LocalFeedbackStore {
+  String get pathLabel => _feedbackFile.path;
+
+  File get _feedbackFile {
+    final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
+    return File('$home/Library/Application Support/StayAwake/feedback.json');
+  }
+
+  Future<void> append(StayAwakeFeedbackEntry entry) async {
+    final file = _feedbackFile;
+    await file.parent.create(recursive: true);
+    final saved = <Map<String, dynamic>>[];
+
+    if (await file.exists()) {
+      try {
+        final json = jsonDecode(await file.readAsString());
+        if (json is List) {
+          for (final item in json) {
+            if (item is Map<String, dynamic>) {
+              saved.add(item);
+            }
+          }
+        }
+      } catch (_) {
+        saved.clear();
+      }
+    }
+
+    saved.add(entry.toJson());
+    final retained = saved.length > 200
+        ? saved.sublist(saved.length - 200)
+        : saved;
+    await file.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(retained),
+    );
+  }
+}
+
+Map<String, dynamic> _decodePromotionMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return {
+      for (final entry in value.entries) entry.key.toString(): entry.value,
+    };
+  }
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      return _decodePromotionMap(decoded);
+    } catch (_) {
+      return const {};
+    }
+  }
+  return const {};
+}
+
+List<String> _decodePromotionList(dynamic value) {
+  if (value is List) return [for (final item in value) item.toString()];
+  if (value is String && value.trim().isNotEmpty) {
+    try {
+      final decoded = jsonDecode(value);
+      return _decodePromotionList(decoded);
+    } catch (_) {
+      return value
+          .split(RegExp(r'[,，]'))
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+  }
+  return const [];
+}
+
+void _collectPromotionResourceMaps(
+  dynamic value,
+  List<Map<String, dynamic>> output,
+) {
+  if (value is Map) {
+    final map = _decodePromotionMap(value);
+    final looksLikePromotion =
+        map.containsKey('resource_title') ||
+        map.containsKey('delivery_name') ||
+        map.containsKey('extend_params') ||
+        map.containsKey('appCode');
+    if (looksLikePromotion) output.add(map);
+    for (final nested in map.values) {
+      if (nested is Map || nested is List) {
+        _collectPromotionResourceMaps(nested, output);
+      }
+    }
+  } else if (value is List) {
+    for (final item in value) {
+      _collectPromotionResourceMaps(item, output);
+    }
+  }
+}
+
+String _currentPromotionPlatform() {
+  if (Platform.isMacOS) return 'macos';
+  if (Platform.isWindows) return 'windows';
+  if (Platform.isAndroid) return 'android';
+  if (Platform.isIOS) return 'ios';
+  return 'web';
+}
+
+String _promotionPlatformTitle(String platform) {
+  return switch (platform) {
+    'macos' => 'macOS',
+    'windows' => 'Windows',
+    'android' => 'Android',
+    'ios' => 'iOS',
+    _ => 'Web',
+  };
+}
+
+List<AppPromotionItem> _fallbackPromotionItems(AppText text) {
+  return [
+    AppPromotionItem(
+      appCode: 'timerbell',
+      appScene: 'efficientTime',
+      title: 'Timerbell',
+      subtitle: text.pick('Focus timer and daily planning.', '专注计时与日常计划。'),
+      category: text.pick('Productivity', '效率'),
+      description: text.pick(
+        'Manage focus sessions, tasks, and routine planning.',
+        '管理专注会话、任务和日常计划。',
+      ),
+      iconUrl: '',
+      bannerUrl: '',
+      downloadUrl: 'https://www.timerbell.com/web',
+      redirectUrl: 'https://www.timerbell.com/web',
+      rating: '4.8',
+      fileSize: '',
+      features: [
+        text.pick('Focus timer', '专注计时'),
+        text.pick('Task planning', '任务计划'),
+        text.pick('Statistics', '统计'),
+      ],
+      platforms: const [
+        AppPromotionPlatformLink(
+          platform: 'macos',
+          title: 'macOS',
+          subtitle: '',
+          url: 'https://www.timerbell.com/web',
+        ),
+        AppPromotionPlatformLink(
+          platform: 'ios',
+          title: 'iOS',
+          subtitle: '',
+          url: 'https://www.timerbell.com/web',
+        ),
+        AppPromotionPlatformLink(
+          platform: 'android',
+          title: 'Android',
+          subtitle: '',
+          url: 'https://www.timerbell.com/web',
+        ),
+        AppPromotionPlatformLink(
+          platform: 'windows',
+          title: 'Windows',
+          subtitle: '',
+          url: 'https://www.timerbell.com/web',
+        ),
+        AppPromotionPlatformLink(
+          platform: 'web',
+          title: 'Web',
+          subtitle: '',
+          url: 'https://www.timerbell.com/web',
+        ),
+      ],
+      sort: 100,
+      enabled: true,
+    ),
+  ];
+}
+
+class AppPromotionPlatformLink {
+  const AppPromotionPlatformLink({
+    required this.platform,
+    required this.title,
+    required this.subtitle,
+    required this.url,
+  });
+
+  final String platform;
+  final String title;
+  final String subtitle;
+  final String url;
+}
+
+class AppPromotionItem {
+  const AppPromotionItem({
+    required this.appCode,
+    required this.appScene,
+    required this.title,
+    required this.subtitle,
+    required this.category,
+    required this.description,
+    required this.iconUrl,
+    required this.bannerUrl,
+    required this.downloadUrl,
+    required this.redirectUrl,
+    required this.rating,
+    required this.fileSize,
+    required this.features,
+    required this.platforms,
+    required this.sort,
+    required this.enabled,
+  });
+
+  final String appCode;
+  final String appScene;
+  final String title;
+  final String subtitle;
+  final String category;
+  final String description;
+  final String iconUrl;
+  final String bannerUrl;
+  final String downloadUrl;
+  final String redirectUrl;
+  final String rating;
+  final String fileSize;
+  final List<String> features;
+  final List<AppPromotionPlatformLink> platforms;
+  final int sort;
+  final bool enabled;
+
+  factory AppPromotionItem.fromResource(Map<String, dynamic> json) {
+    final extendParams = _decodePromotionMap(
+      json['extend_params'] ??
+          json['extendParams'] ??
+          json['extend_params_map'] ??
+          json['extendParamsMap'],
+    );
+    final merged = <String, dynamic>{...json, ...extendParams};
+    final platformsJson = _decodePromotionMap(merged['platforms']);
+    final platforms = <AppPromotionPlatformLink>[
+      for (final entry in platformsJson.entries)
+        if (entry.value is Map)
+          AppPromotionPlatformLink(
+            platform: entry.key,
+            title: (entry.value['title'] ?? _promotionPlatformTitle(entry.key))
+                .toString(),
+            subtitle: (entry.value['subtitle'] ?? '').toString(),
+            url: (entry.value['url'] ?? '').toString(),
+          ),
+    ];
+    final features = _decodePromotionList(merged['features']);
+    return AppPromotionItem(
+      appCode:
+          (merged['appCode'] ??
+                  merged['app_code'] ??
+                  merged['delivery_name'] ??
+                  merged['resource_code'] ??
+                  '')
+              .toString(),
+      appScene: (merged['appScene'] ?? merged['app_scene'] ?? '').toString(),
+      title: (merged['title'] ?? merged['resource_title'] ?? '').toString(),
+      subtitle: (merged['subtitle'] ?? merged['resource_content'] ?? '')
+          .toString(),
+      category: (merged['category'] ?? '').toString(),
+      description:
+          (merged['description'] ??
+                  merged['resource_description'] ??
+                  merged['resource_content'] ??
+                  '')
+              .toString(),
+      iconUrl: (merged['iconUrl'] ?? merged['resource_icon_url'] ?? '')
+          .toString(),
+      bannerUrl: (merged['bannerUrl'] ?? merged['resource_picture_url'] ?? '')
+          .toString(),
+      downloadUrl:
+          (merged['downloadUrl'] ??
+                  merged['download_url'] ??
+                  merged['primaryDownloadUrl'] ??
+                  merged['primary_download_url'] ??
+                  merged['resource_redirect_url'] ??
+                  '')
+              .toString(),
+      redirectUrl:
+          (merged['redirectUrl'] ?? merged['resource_redirect_url'] ?? '')
+              .toString(),
+      rating: (merged['rating'] ?? '').toString(),
+      fileSize: (merged['fileSize'] ?? merged['file_size'] ?? '').toString(),
+      features: features,
+      platforms: platforms,
+      sort: int.tryParse('${merged['sort'] ?? 0}') ?? 0,
+      enabled: merged['enabled'] != false && merged['is_enabled'] != false,
+    );
+  }
+
+  AppPromotionItem copyWith({
+    String? appCode,
+    String? appScene,
+    String? title,
+    String? subtitle,
+    String? category,
+    String? description,
+    String? iconUrl,
+    String? bannerUrl,
+    String? downloadUrl,
+    String? redirectUrl,
+    String? rating,
+    String? fileSize,
+    List<String>? features,
+    List<AppPromotionPlatformLink>? platforms,
+    int? sort,
+    bool? enabled,
+  }) {
+    return AppPromotionItem(
+      appCode: appCode ?? this.appCode,
+      appScene: appScene ?? this.appScene,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      category: category ?? this.category,
+      description: description ?? this.description,
+      iconUrl: iconUrl ?? this.iconUrl,
+      bannerUrl: bannerUrl ?? this.bannerUrl,
+      downloadUrl: downloadUrl ?? this.downloadUrl,
+      redirectUrl: redirectUrl ?? this.redirectUrl,
+      rating: rating ?? this.rating,
+      fileSize: fileSize ?? this.fileSize,
+      features: features ?? this.features,
+      platforms: platforms ?? this.platforms,
+      sort: sort ?? this.sort,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
+  String get downloadButtonUrl {
+    if (downloadUrl.isNotEmpty) return downloadUrl;
+    if (redirectUrl.isNotEmpty) return redirectUrl;
+    return currentPlatformUrl;
+  }
+
+  String get currentPlatformUrl {
+    final current = _currentPromotionPlatform();
+    for (final platform in platforms) {
+      if (platform.platform == current && platform.url.isNotEmpty) {
+        return platform.url;
+      }
+    }
+    for (final platform in platforms) {
+      if (platform.url.isNotEmpty) return platform.url;
+    }
+    return redirectUrl;
+  }
+}
+
+class RemotePromotionStore {
+  const RemotePromotionStore();
+
+  Uri get _resourceUri {
+    final normalizedBase = Params.mBaseUrl.endsWith('/')
+        ? Params.mBaseUrl
+        : '${Params.mBaseUrl}/';
+    return Uri.parse(normalizedBase).replace(
+      path:
+          '${Uri.parse(normalizedBase).path}${Apis.getResourceList.substring(1)}',
+    );
+  }
+
+  Future<List<AppPromotionItem>> list() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.postUrl(_resourceUri);
+      request.headers.contentType = ContentType.json;
+      request.write(
+        jsonEncode({
+          'scene_code': Params.appPromotionSceneCode,
+          'location_code': Params.appPromotionListLocationCode,
+          'appScene': Params.appScene,
+        }),
+      );
+      final response = await request.close().timeout(
+        const Duration(seconds: 12),
+      );
+      final body = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw HttpException(
+          'Promotion HTTP ${response.statusCode}: $body',
+          uri: _resourceUri,
+        );
+      }
+      final decoded = jsonDecode(body);
+      final maps = <Map<String, dynamic>>[];
+      _collectPromotionResourceMaps(decoded, maps);
+      final items = maps
+          .map(AppPromotionItem.fromResource)
+          .where(_isVisiblePromotion)
+          .toList();
+      items.sort((left, right) => left.sort.compareTo(right.sort));
+      return items;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  bool _isVisiblePromotion(AppPromotionItem item) {
+    if (!item.enabled || item.title.isEmpty) return false;
+    if (item.appScene == Params.appScene || item.appCode == Params.appScene) {
+      return false;
+    }
+    return true;
+  }
+}
+
+class _AppPromotionPage extends StatefulWidget {
+  const _AppPromotionPage();
+
+  @override
+  State<_AppPromotionPage> createState() => _AppPromotionPageState();
+}
+
+class _AppPromotionPageState extends State<_AppPromotionPage> {
+  final RemotePromotionStore _store = const RemotePromotionStore();
+  final List<AppPromotionItem> _serverItems = [];
+  Object? _loadError;
+  bool _loading = true;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPromotions(initial: true);
+  }
+
+  Future<void> _loadPromotions({bool initial = false}) async {
+    setState(() {
+      _loading = initial;
+      _refreshing = !initial;
+      _loadError = null;
+    });
+    try {
+      final items = await _store.list();
+      if (!mounted) return;
+      setState(() {
+        _serverItems
+          ..clear()
+          ..addAll(items);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = error);
+    }
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _refreshing = false;
+    });
+  }
+
+  Future<void> _openPromotion(AppPromotionItem item) async {
+    await _openPromotionUrl(item.downloadButtonUrl);
+  }
+
+  Future<void> _openPromotionUrl(String url) async {
+    final text = AppText.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    if (url.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(text.pick('No download link configured.', '尚未配置下载链接。')),
+        ),
+      );
+      return;
+    }
+    try {
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        throw const FormatException('Invalid promotion URL');
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) {
+        throw const ProcessException('url_launcher', [], 'Open returned false');
+      }
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(text.pick('Open link failed.', '打开链接失败。'))),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final fallbackItems = _serverItems.isEmpty
+        ? _fallbackPromotionItems(text)
+        : const <AppPromotionItem>[];
+    final items = [..._serverItems, ...fallbackItems];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Surface(
+          child: Row(
+            children: [
+              const Icon(Icons.apps_rounded, color: Color(0xFF0F7E6E)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      text.pick('Discover Apps', '发现更多应用'),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      text.pick(
+                        'Promoted apps are loaded from the app_cross_promotion resource scene.',
+                        '推广应用来自 app_cross_promotion 资源位。',
+                      ),
+                      style: const TextStyle(
+                        color: Color(0xFF65706C),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _refreshing
+                    ? null
+                    : () => _loadPromotions(initial: false),
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(text.pick('Refresh', '刷新')),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (_loading)
+          const _Surface(
+            child: Padding(
+              padding: EdgeInsets.all(28),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else ...[
+          if (_loadError != null && _serverItems.isEmpty)
+            _Surface(
+              child: _EmptyState(
+                icon: Icons.cloud_off_rounded,
+                title: text.pick('Promotion resource unavailable', '推广资源位不可用'),
+                detail: text.pick(
+                  'Fallback examples are shown until the resource scene is configured.',
+                  '资源位配置前会显示本地示例。',
+                ),
+              ),
+            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 980;
+              return Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  for (final item in items)
+                    SizedBox(
+                      width: compact
+                          ? constraints.maxWidth
+                          : (constraints.maxWidth - 14) / 2,
+                      child: _PromotionCard(
+                        item: item,
+                        onDownload: () => _openPromotion(item),
+                        onPlatformDownload: (platform) =>
+                            _openPromotionUrl(platform.url),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PromotionCard extends StatelessWidget {
+  const _PromotionCard({
+    required this.item,
+    required this.onDownload,
+    required this.onPlatformDownload,
+  });
+
+  final AppPromotionItem item;
+  final VoidCallback onDownload;
+  final ValueChanged<AppPromotionPlatformLink> onPlatformDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    return _Surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PromotionIcon(item: item),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.subtitle.isEmpty ? item.description : item.subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF65706C),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (item.category.isNotEmpty)
+                _MetaChip(
+                  label: text.pick('Category', '分类'),
+                  value: item.category,
+                ),
+              if (item.rating.isNotEmpty)
+                _MetaChip(label: text.pick('Rating', '评分'), value: item.rating),
+              if (item.fileSize.isNotEmpty)
+                _MetaChip(label: text.pick('Size', '大小'), value: item.fileSize),
+            ],
+          ),
+          if (item.features.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final feature in item.features.take(6))
+                  Chip(
+                    label: Text(feature),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final platform in item.platforms)
+                      _PlatformButton(
+                        platform: platform,
+                        onPressed: platform.url.isEmpty
+                            ? null
+                            : () => onPlatformDownload(platform),
+                      ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: onDownload,
+                icon: const Icon(Icons.download_rounded),
+                label: Text(text.pick('Download', '下载')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromotionIcon extends StatelessWidget {
+  const _PromotionIcon({required this.item});
+
+  final AppPromotionItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F8F7C),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(Icons.apps_rounded, color: Colors.white, size: 30),
+    );
+    if (item.iconUrl.isEmpty) return icon;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.network(
+        item.iconUrl,
+        width: 54,
+        height: 54,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => icon,
+      ),
+    );
+  }
+}
+
+class _PlatformButton extends StatelessWidget {
+  const _PlatformButton({required this.platform, required this.onPressed});
+
+  final AppPromotionPlatformLink platform;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (platform.platform) {
+      'ios' => Icons.phone_iphone_rounded,
+      'android' => Icons.android_rounded,
+      'windows' => Icons.window_rounded,
+      'macos' => Icons.desktop_mac_rounded,
+      _ => Icons.public_rounded,
+    };
+    final label = platform.title.isEmpty
+        ? _promotionPlatformTitle(platform.platform)
+        : platform.title;
+    final enabled = onPressed != null;
+    return Tooltip(
+      message: enabled ? label : '$label unavailable',
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 15),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 34),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          visualDensity: VisualDensity.compact,
+          foregroundColor: const Color(0xFF0F7E6E),
+          disabledForegroundColor: const Color(0xFF9AA8A1),
+          side: BorderSide(
+            color: enabled ? const Color(0xFFBFD8CF) : const Color(0xFFDCE5E0),
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+        ),
+      ),
+    );
+  }
+}
+
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.selected,
@@ -1717,6 +3825,16 @@ class _Sidebar extends StatelessWidget {
         _navTitle(text, NavigationSection.settings),
         NavigationSection.settings,
       ),
+      (
+        Icons.feedback_outlined,
+        _navTitle(text, NavigationSection.feedback),
+        NavigationSection.feedback,
+      ),
+      (
+        Icons.apps_rounded,
+        _navTitle(text, NavigationSection.promotions),
+        NavigationSection.promotions,
+      ),
     ];
 
     return Container(
@@ -1735,7 +3853,7 @@ class _Sidebar extends StatelessWidget {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'StayAwake',
+                  Params.appName,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
@@ -1840,11 +3958,17 @@ class _Header extends StatelessWidget {
     required this.title,
     required this.session,
     required this.nativeStatus,
+    required this.languageMode,
+    required this.onFeedbackPressed,
+    required this.onLanguageChanged,
   });
 
   final String title;
   final AwakeSession session;
   final String nativeStatus;
+  final String languageMode;
+  final VoidCallback onFeedbackPressed;
+  final ValueChanged<String> onLanguageChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1870,8 +3994,811 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
+        _LanguageMenuButton(
+          languageMode: languageMode,
+          onChanged: onLanguageChanged,
+        ),
+        const SizedBox(width: 8),
+        _FeedbackButton(onPressed: onFeedbackPressed),
+        const SizedBox(width: 12),
         _StatusPill(isActive: session.isActive),
       ],
+    );
+  }
+}
+
+class _FeedbackButton extends StatelessWidget {
+  const _FeedbackButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final label = text.pick('Feedback', '用户反馈');
+    return Tooltip(
+      message: text.pick('Send feedback', '用户反馈'),
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onPressed,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 96),
+              height: 34,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFD7E2DC)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.feedback_outlined,
+                    size: 18,
+                    color: Color(0xFF0F7E6E),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF153D37),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackDraft {
+  const _FeedbackDraft({
+    required this.rating,
+    required this.content,
+    required this.contact,
+  });
+
+  final int rating;
+  final String content;
+  final String contact;
+}
+
+class _FeedbackDialog extends StatefulWidget {
+  const _FeedbackDialog({required this.text});
+
+  final AppText text;
+
+  @override
+  State<_FeedbackDialog> createState() => _FeedbackDialogState();
+}
+
+class _FeedbackDialogState extends State<_FeedbackDialog> {
+  final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _contactController = TextEditingController();
+  int _rating = 5;
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    _contactController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = widget.text;
+    return AlertDialog(
+      title: Text(text.pick('Feedback', '用户反馈')),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text.pick(
+                  'Tell us what happened or what you want improved.',
+                  '告诉我们遇到了什么问题，或你希望改进什么。',
+                ),
+                style: const TextStyle(color: Color(0xFF65706C), height: 1.35),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                text.pick('Rating', '评分'),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  for (var value = 1; value <= 5; value++)
+                    IconButton(
+                      tooltip: '$value',
+                      onPressed: () => setState(() => _rating = value),
+                      icon: Icon(
+                        value <= _rating
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        color: const Color(0xFFC48B2A),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _contentController,
+                minLines: 4,
+                maxLines: 7,
+                maxLength: 500,
+                decoration: InputDecoration(
+                  labelText: text.pick('Content', '反馈内容'),
+                  hintText: text.pick('Describe your feedback', '请描述你的反馈'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _contactController,
+                decoration: InputDecoration(
+                  labelText: text.pick('Contact (optional)', '联系方式（可选）'),
+                  hintText: text.pick('Email or phone, optional', '邮箱或电话，可不填'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                text.pick(
+                  'Feedback is saved with appScene: stayAwake.',
+                  '反馈会携带 appScene: stayAwake 保存。',
+                ),
+                style: const TextStyle(color: Color(0xFF7A8581), fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(text.pick('Cancel', '取消')),
+        ),
+        FilledButton(
+          onPressed: () {
+            final content = _contentController.text.trim();
+            if (content.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    text.pick('Please enter feedback content.', '请先填写反馈内容。'),
+                  ),
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop(
+              _FeedbackDraft(
+                rating: _rating,
+                content: content,
+                contact: _contactController.text.trim(),
+              ),
+            );
+          },
+          child: Text(text.pick('Submit feedback', '提交反馈')),
+        ),
+      ],
+    );
+  }
+}
+
+class _LanguageMenuButton extends StatelessWidget {
+  const _LanguageMenuButton({
+    required this.languageMode,
+    required this.onChanged,
+  });
+
+  final String languageMode;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final options = [
+      (
+        AppLocaleController.system,
+        text.pick('Automatic', '自动'),
+        Icons.language_rounded,
+      ),
+      (
+        AppLocaleController.chinese,
+        text.pick('Chinese', '中文'),
+        Icons.translate_rounded,
+      ),
+      (AppLocaleController.english, 'English', Icons.abc_rounded),
+      (
+        AppLocaleController.japanese,
+        text.pick('Japanese', '日语'),
+        Icons.translate_rounded,
+      ),
+      (
+        AppLocaleController.french,
+        text.pick('French', '法语'),
+        Icons.translate_rounded,
+      ),
+      (
+        AppLocaleController.italian,
+        text.pick('Italian', '意大利语'),
+        Icons.translate_rounded,
+      ),
+      (
+        AppLocaleController.german,
+        text.pick('German', '德语'),
+        Icons.translate_rounded,
+      ),
+      (
+        AppLocaleController.spanish,
+        text.pick('Spanish', '西班牙语'),
+        Icons.translate_rounded,
+      ),
+    ];
+    final selected = AppLocaleController.normalized(languageMode);
+    final selectedOption = options.firstWhere(
+      (option) => option.$1 == selected,
+      orElse: () => options.first,
+    );
+
+    return PopupMenuButton<String>(
+      tooltip: text.pick('Language', '语言'),
+      initialValue: selected,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        for (final option in options)
+          PopupMenuItem<String>(
+            value: option.$1,
+            child: Row(
+              children: [
+                Icon(option.$3, size: 18, color: const Color(0xFF0F7E6E)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(option.$2)),
+                if (selected == option.$1)
+                  const Icon(Icons.check_rounded, size: 18),
+              ],
+            ),
+          ),
+      ],
+      child: Container(
+        width: 112,
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFD7E2DC)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.language_rounded,
+              size: 18,
+              color: Color(0xFF0F7E6E),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                selectedOption.$2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF153D37),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 17,
+              color: Color(0xFF60706B),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackListPage extends StatefulWidget {
+  const _FeedbackListPage({
+    required this.store,
+    required this.onSubmitFeedback,
+  });
+
+  final RemoteFeedbackStore store;
+  final Future<StayAwakeFeedbackRecord?> Function(_FeedbackDraft draft)
+  onSubmitFeedback;
+
+  @override
+  State<_FeedbackListPage> createState() => _FeedbackListPageState();
+}
+
+class _FeedbackListPageState extends State<_FeedbackListPage> {
+  final TextEditingController _contentController = TextEditingController();
+  final List<StayAwakeFeedbackRecord> _serverRecords = [];
+  final List<StayAwakeFeedbackRecord> _optimisticRecords = [];
+  Object? _loadError;
+  bool _loadingInitial = true;
+  bool _refreshing = false;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecords(initial: true);
+  }
+
+  Future<void> _loadRecords({bool initial = false}) async {
+    if (initial) {
+      setState(() {
+        _loadingInitial = true;
+        _loadError = null;
+      });
+    } else {
+      setState(() {
+        _refreshing = true;
+        _loadError = null;
+      });
+    }
+    try {
+      final records = await widget.store.list();
+      if (!mounted) return;
+      setState(() {
+        _serverRecords
+          ..clear()
+          ..addAll(records);
+        _optimisticRecords.removeWhere(
+          (localRecord) => records.any(
+            (serverRecord) =>
+                _isSameSubmittedFeedback(localRecord, serverRecord),
+          ),
+        );
+        _loadError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingInitial = false;
+          _refreshing = false;
+        });
+      }
+    }
+  }
+
+  void _refresh() {
+    unawaited(_loadRecords());
+  }
+
+  bool _isSameSubmittedFeedback(
+    StayAwakeFeedbackRecord left,
+    StayAwakeFeedbackRecord right,
+  ) {
+    if (left.content != right.content) return false;
+    final leftTime = left.createdAt;
+    final rightTime = right.createdAt;
+    if (leftTime == null || rightTime == null) return true;
+    return leftTime.difference(rightTime).abs() < const Duration(minutes: 5);
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitInlineFeedback() async {
+    final text = AppText.of(context);
+    final content = _contentController.text.trim();
+    if (content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            text.pick('Please enter feedback content.', '请先填写反馈内容。'),
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    final submittedRecord = await widget.onSubmitFeedback(
+      _FeedbackDraft(rating: 0, content: content, contact: ''),
+    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (submittedRecord != null) {
+      _contentController.clear();
+      setState(() {
+        _optimisticRecords.insert(0, submittedRecord);
+      });
+      unawaited(_loadRecords());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final seen = <String>{};
+    final records = <StayAwakeFeedbackRecord>[
+      for (final record in [..._optimisticRecords, ..._serverRecords])
+        if (seen.add(
+          record.objectId.isNotEmpty
+              ? record.objectId
+              : '${record.createdAt?.millisecondsSinceEpoch}-${record.content}',
+        ))
+          record,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Surface(
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.feedback_outlined,
+                      color: Color(0xFF0F7E6E),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            text.pick('User Feedback', '用户反馈'),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            text.pick(
+                              'Server records for StayAwake feedback.',
+                              '展示服务器中的 StayAwake 反馈记录。',
+                            ),
+                            style: const TextStyle(
+                              color: Color(0xFF65706C),
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _refreshing ? null : _refresh,
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: Text(text.pick('Refresh', '刷新')),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (_loadingInitial && records.isEmpty)
+          const _Surface(
+            child: Padding(
+              padding: EdgeInsets.all(28),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          )
+        else if (_loadError != null && records.isEmpty)
+          _Surface(
+            child: _EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: text.pick('Feedback server unavailable', '反馈服务器不可用'),
+              detail: text.pick(
+                'Start the Egg service or check the API base URL, then refresh.',
+                '请启动 Egg 服务或检查 API 地址，然后刷新。',
+              ),
+            ),
+          )
+        else if (records.isEmpty)
+          _Surface(
+            child: _EmptyState(
+              icon: Icons.forum_outlined,
+              title: text.pick('No feedback yet', '暂无反馈'),
+              detail: text.pick(
+                'New feedback will appear here after it reaches the server.',
+                '新的反馈成功提交到服务器后会显示在这里。',
+              ),
+            ),
+          )
+        else
+          ...records.map((record) => _FeedbackRecordCard(record: record)),
+        const SizedBox(height: 2),
+        _InlineFeedbackComposer(
+          controller: _contentController,
+          submitting: _submitting,
+          onSubmit: _submitInlineFeedback,
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineFeedbackComposer extends StatelessWidget {
+  const _InlineFeedbackComposer({
+    required this.controller,
+    required this.submitting,
+    required this.onSubmit,
+  });
+
+  final TextEditingController controller;
+  final bool submitting;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    return _Surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  text.pick('Write feedback', '写下你的反馈'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: controller,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: 500,
+            enabled: !submitting,
+            decoration: InputDecoration(
+              hintText: text.pick('Type your feedback here...', '在这里输入你的反馈...'),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  text.pick('Submits feedback to the server.', '提交反馈到服务器。'),
+                  style: const TextStyle(color: Color(0xFF65706C)),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: submitting ? null : onSubmit,
+                icon: submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_rounded),
+                label: Text(text.pick('Send', '发送')),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeedbackRecordCard extends StatelessWidget {
+  const _FeedbackRecordCard({required this.record});
+
+  final StayAwakeFeedbackRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final createdAt = record.createdAt?.toLocal().toString().split('.').first;
+    final officialReply = record.officialReply.trim();
+    final replyAt = record.officialReplyAt > 0
+        ? DateTime.fromMillisecondsSinceEpoch(
+            record.officialReplyAt,
+          ).toLocal().toString().split('.').first
+        : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _Surface(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    record.content.isEmpty
+                        ? text.pick('No content', '无内容')
+                        : record.content,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (record.appScene.isNotEmpty)
+                  _MetaChip(label: 'appScene', value: record.appScene),
+                _MetaChip(
+                  label: text.pick('Status', '状态'),
+                  value: _feedbackStatusText(text, record.status),
+                ),
+                if (record.platform.isNotEmpty)
+                  _MetaChip(
+                    label: text.pick('Platform', '平台'),
+                    value: record.platform,
+                  ),
+                if (record.market.isNotEmpty)
+                  _MetaChip(
+                    label: text.pick('Market', '市场'),
+                    value: record.market,
+                  ),
+                if (createdAt != null)
+                  _MetaChip(
+                    label: text.pick('Created', '创建时间'),
+                    value: createdAt,
+                  ),
+              ],
+            ),
+            if (officialReply.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF7F2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFC8E8DD)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.support_agent_rounded,
+                          size: 18,
+                          color: Color(0xFF0F7E6E),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          text.pick('Official reply', '官方回复'),
+                          style: const TextStyle(
+                            color: Color(0xFF0F7E6E),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        if (replyAt != null) ...[
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              '${text.pick('Reply time', '回复时间')}: $replyAt',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF65706C),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      officialReply,
+                      style: const TextStyle(
+                        color: Color(0xFF38413E),
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (record.contact.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                '${text.pick('Contact', '联系方式')}: ${record.contact}',
+                style: const TextStyle(color: Color(0xFF65706C)),
+              ),
+            ],
+            if (record.objectId.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'ID: ${record.objectId}',
+                style: const TextStyle(color: Color(0xFF8A9490), fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _feedbackStatusText(AppText text, int value) {
+    return switch (value) {
+      1 => text.pick('In progress', '处理中'),
+      2 => text.pick('Developing', '开发中'),
+      3 => text.pick('Done', '处理完成'),
+      4 => text.pick('Declined', '不予处理'),
+      _ => text.pick('Open', '未处理'),
+    };
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F5F1),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: const Color(0xFFD7E2DC)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          color: Color(0xFF53615C),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -2577,12 +5504,30 @@ class _SettingsPage extends StatefulWidget {
   const _SettingsPage({
     required this.settings,
     required this.storePath,
+    required this.powerProtectHelperInstalled,
+    required this.powerProtectHelperBusy,
     required this.onChanged,
+    required this.onRecordGlobalHotkey,
+    required this.onChooseDiskWakePath,
+    required this.onClearDiskWakePath,
+    required this.onClearDeliveredNotifications,
+    required this.onRefreshPowerProtectHelper,
+    required this.onInstallPowerProtectHelper,
+    required this.onRemovePowerProtectHelper,
   });
 
   final AppSettings settings;
   final String storePath;
+  final bool? powerProtectHelperInstalled;
+  final bool powerProtectHelperBusy;
   final ValueChanged<AppSettings> onChanged;
+  final Future<void> Function() onRecordGlobalHotkey;
+  final Future<void> Function() onChooseDiskWakePath;
+  final Future<void> Function() onClearDiskWakePath;
+  final Future<void> Function() onClearDeliveredNotifications;
+  final Future<void> Function() onRefreshPowerProtectHelper;
+  final Future<void> Function() onInstallPowerProtectHelper;
+  final Future<void> Function() onRemovePowerProtectHelper;
 
   @override
   State<_SettingsPage> createState() => _SettingsPageState();
@@ -2668,16 +5613,29 @@ class _SettingsPageState extends State<_SettingsPage> {
               '对应 Amphetamine 的显示器关闭模式。',
             ),
             value: settings.allowSystemSleepWhenDisplayOff,
-            onChanged: (value) => onChanged(
-              settings.copyWith(allowSystemSleepWhenDisplayOff: value),
-            ),
+            onChanged: (value) {
+              onChanged(
+                settings.copyWith(allowSystemSleepWhenDisplayOff: value),
+              );
+              if (value && widget.powerProtectHelperInstalled == true) {
+                widget.onRemovePowerProtectHelper();
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          _ClosedDisplayHelperRow(
+            installed: widget.powerProtectHelperInstalled,
+            busy: widget.powerProtectHelperBusy,
+            onRefresh: widget.onRefreshPowerProtectHelper,
+            onInstall: widget.onInstallPowerProtectHelper,
+            onRemove: widget.onRemovePowerProtectHelper,
           ),
           const Divider(height: 28),
           _SwitchRow(
             title: text.pick('Allow screen saver after idle', '闲置后允许屏幕保护程序'),
             subtitle: text.pick(
-              'Keep this as a visible policy flag for sessions.',
-              '作为会话可见策略开关保存。',
+              'Starts the system screen saver after 45 minutes while active.',
+              '会话活动 45 分钟后启动系统屏幕保护程序。',
             ),
             value: settings.allowScreenSaver,
             onChanged: (value) =>
@@ -2711,11 +5669,33 @@ class _SettingsPageState extends State<_SettingsPage> {
           '启动、唤醒、程序坞和动态效果偏好。',
         ),
         children: [
+          _ChoiceRow(
+            title: text.pick('Language', '语言'),
+            subtitle: text.pick(
+              'Follow the system by default, or choose a fixed app language.',
+              '默认跟随系统，也可以固定应用语言。',
+            ),
+            value: _localizedLanguageMode(text, settings.languageMode),
+            choices: [
+              _localizedLanguageMode(text, AppLocaleController.system),
+              _localizedLanguageMode(text, AppLocaleController.chinese),
+              _localizedLanguageMode(text, AppLocaleController.english),
+              _localizedLanguageMode(text, AppLocaleController.japanese),
+              _localizedLanguageMode(text, AppLocaleController.french),
+              _localizedLanguageMode(text, AppLocaleController.italian),
+              _localizedLanguageMode(text, AppLocaleController.german),
+              _localizedLanguageMode(text, AppLocaleController.spanish),
+            ],
+            onChanged: (value) => onChanged(
+              settings.copyWith(languageMode: _languageModeWire(value)),
+            ),
+          ),
+          const Divider(height: 28),
           _SwitchRow(
             title: text.pick('Start at login', '登录时启动'),
             subtitle: text.pick(
-              'Stored locally; native login item hookup is not enabled yet.',
-              '已保存到本地；原生登录项接入尚未启用。',
+              'Uses the native macOS Login Item service when available.',
+              '可用时使用 macOS 原生登录项服务。',
             ),
             value: settings.startAtLogin,
             onChanged: (value) =>
@@ -2742,8 +5722,8 @@ class _SettingsPageState extends State<_SettingsPage> {
               '从睡眠中唤醒后开启会话',
             ),
             subtitle: text.pick(
-              'Preference is saved; native wake observer is planned.',
-              '偏好已保存；原生唤醒监听尚在计划中。',
+              'Uses the native macOS wake notification.',
+              '使用 macOS 原生唤醒通知触发。',
             ),
             value: settings.startSessionAfterWake,
             onChanged: (value) =>
@@ -2787,8 +5767,8 @@ class _SettingsPageState extends State<_SettingsPage> {
               'Mac 强制睡眠时结束会话',
             ),
             subtitle: text.pick(
-              'Preserves the preference for a future sleep callback.',
-              '为后续睡眠回调保留该偏好。',
+              'Uses the native sleep callback before the system sleeps.',
+              '系统睡眠前通过原生回调结束会话。',
             ),
             value: settings.forceSleepEndsSession,
             onChanged: (value) =>
@@ -2812,12 +5792,23 @@ class _SettingsPageState extends State<_SettingsPage> {
               '显示器关闭后立即锁屏',
             ),
             subtitle: text.pick(
-              'Preference is saved; display power event hook is planned.',
-              '偏好已保存；显示器电源事件监听尚在计划中。',
+              'Uses the native screen-sleep notification.',
+              '使用原生显示器睡眠事件触发锁屏。',
             ),
             value: settings.lockWhenDisplayOff,
             onChanged: (value) =>
                 onChanged(settings.copyWith(lockWhenDisplayOff: value)),
+          ),
+          const Divider(height: 28),
+          _SwitchRow(
+            title: text.pick('Allow screen lock during sessions', '会话期间允许屏幕锁定'),
+            subtitle: text.pick(
+              'When off, StayAwake temporarily prevents macOS from requiring a password after the display turns off.',
+              '关闭时，StayAwake 会在会话期间临时阻止显示器关闭后要求输入密码。',
+            ),
+            value: settings.allowScreenLock,
+            onChanged: (value) =>
+                onChanged(settings.copyWith(allowScreenLock: value)),
           ),
           const Divider(height: 28),
           _SwitchRow(
@@ -2870,8 +5861,8 @@ class _SettingsPageState extends State<_SettingsPage> {
           _SwitchRow(
             title: text.pick('End session when switching user', '切换用户时结束会话'),
             subtitle: text.pick(
-              'Saved locally for a future fast-user-switch callback.',
-              '已保存到本地，用于后续快速用户切换回调。',
+              'Uses the macOS session-resign-active notification.',
+              '使用 macOS 用户会话切换通知。',
             ),
             value: settings.endSessionOnUserSwitch,
             onChanged: (value) =>
@@ -2927,6 +5918,36 @@ class _SettingsPageState extends State<_SettingsPage> {
                 onChanged(settings.copyWith(keepDiskAwake: value)),
           ),
           const Divider(height: 28),
+          _InfoRow(
+            icon: Icons.folder_open_rounded,
+            title: text.pick('Disk wake target', '硬盘唤醒目标'),
+            detail: settings.diskWakePath.isEmpty
+                ? text.pick(
+                    'Default Application Support folder',
+                    '默认 Application Support 目录',
+                  )
+                : '${settings.diskWakeName}\n${settings.diskWakePath}',
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: widget.onChooseDiskWakePath,
+                icon: const Icon(Icons.folder_rounded),
+                label: Text(text.pick('Choose target', '选择目标')),
+              ),
+              OutlinedButton.icon(
+                onPressed: settings.diskWakePath.isEmpty
+                    ? null
+                    : widget.onClearDiskWakePath,
+                icon: const Icon(Icons.restart_alt_rounded),
+                label: Text(text.pick('Use default', '使用默认')),
+              ),
+            ],
+          ),
+          const Divider(height: 28),
           Text(
             text.pick(
               'Disk wake interval: ${settings.diskWakeIntervalSeconds}s',
@@ -2950,10 +5971,21 @@ class _SettingsPageState extends State<_SettingsPage> {
         icon: Icons.keyboard_command_key_rounded,
         title: text.pick('Hotkeys', '热键'),
         subtitle: text.pick(
-          'Visible hotkey policy now, native recorder later.',
-          '当前先展示热键策略，后续接入原生录制器。',
+          'Native global shortcut registration and recording.',
+          '原生全局快捷键注册和录制。',
         ),
         children: [
+          _SwitchRow(
+            title: text.pick('Enable global shortcut', '启用全局快捷键'),
+            subtitle: text.pick(
+              'Registers the shortcut with macOS while StayAwake is running.',
+              'StayAwake 运行时向 macOS 注册该快捷键。',
+            ),
+            value: settings.globalHotkeyEnabled,
+            onChanged: (value) =>
+                onChanged(settings.copyWith(globalHotkeyEnabled: value)),
+          ),
+          const Divider(height: 28),
           _ChoiceRow(
             title: text.pick('When a session is running', '当会话正在运行时'),
             subtitle: text.pick(
@@ -2998,9 +6030,15 @@ class _SettingsPageState extends State<_SettingsPage> {
             icon: Icons.keyboard_rounded,
             title: text.pick('Recorder', '录制器'),
             detail: text.pick(
-              'Native global shortcut capture is planned; no shortcut is registered yet.',
-              '原生全局快捷键捕获尚在计划中；目前没有注册快捷键。',
+              'Current shortcut: ${settings.globalHotkeyLabel}',
+              '当前快捷键：${settings.globalHotkeyLabel}',
             ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: widget.onRecordGlobalHotkey,
+            icon: const Icon(Icons.keyboard_command_key_rounded),
+            label: Text(text.pick('Record shortcut', '录制快捷键')),
           ),
         ],
       ),
@@ -3015,8 +6053,8 @@ class _SettingsPageState extends State<_SettingsPage> {
           _SwitchRow(
             title: text.pick('Show notifications', '显示通知'),
             subtitle: text.pick(
-              'Master switch for local notification hooks.',
-              '本地通知能力的总开关。',
+              'Requests macOS notification permission when enabled.',
+              '开启后请求 macOS 通知权限。',
             ),
             value: settings.showNotifications,
             onChanged: (value) =>
@@ -3072,8 +6110,8 @@ class _SettingsPageState extends State<_SettingsPage> {
               '会话开始或停止时播放提示音',
             ),
             subtitle: text.pick(
-              'Sound selection is planned; preference is saved now.',
-              '提示音选择尚在计划中；当前先保存偏好。',
+              'Uses the default macOS notification sound.',
+              '使用 macOS 默认通知提示音。',
             ),
             value: settings.playStartStopSound,
             onChanged: (value) =>
@@ -3101,6 +6139,12 @@ class _SettingsPageState extends State<_SettingsPage> {
             onChanged: (value) => onChanged(
               settings.copyWith(clearDeliveredNotifications: value),
             ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: widget.onClearDeliveredNotifications,
+            icon: const Icon(Icons.notifications_off_rounded),
+            label: Text(text.pick('Clear now', '立即清除')),
           ),
         ],
       ),
@@ -3301,6 +6345,66 @@ class _SettingsPageState extends State<_SettingsPage> {
         value == 'Cup' || value == 'Moon' || value == 'Text only'
             ? value
             : 'Pill',
+    };
+  }
+
+  String _localizedLanguageMode(AppText text, String value) {
+    return switch (AppLocaleController.normalized(value)) {
+      AppLocaleController.chinese => text.pick('Chinese', '中文'),
+      AppLocaleController.english => 'English',
+      AppLocaleController.japanese => text.pick('Japanese', '日语'),
+      AppLocaleController.french => text.pick('French', '法语'),
+      AppLocaleController.italian => text.pick('Italian', '意大利语'),
+      AppLocaleController.german => text.pick('German', '德语'),
+      AppLocaleController.spanish => text.pick('Spanish', '西班牙语'),
+      _ => text.pick('Follow system', '跟随系统'),
+    };
+  }
+
+  String _languageModeWire(String value) {
+    return switch (value) {
+      '中文' ||
+      'Chinese' ||
+      'Chinois' ||
+      'Cinese' ||
+      'Chinesisch' ||
+      'Chino' => AppLocaleController.chinese,
+      'English' => AppLocaleController.english,
+      '日语' ||
+      'Japanese' ||
+      '日本語' ||
+      'Japonais' ||
+      'Giapponese' ||
+      'Japanisch' ||
+      'Japonés' => AppLocaleController.japanese,
+      '法语' ||
+      'French' ||
+      'フランス語' ||
+      'Français' ||
+      'Francese' ||
+      'Französisch' ||
+      'Francés' => AppLocaleController.french,
+      '意大利语' ||
+      'Italian' ||
+      'イタリア語' ||
+      'Italien' ||
+      'Italiano' ||
+      'Italienisch' => AppLocaleController.italian,
+      '德语' ||
+      'German' ||
+      'ドイツ語' ||
+      'Allemand' ||
+      'Tedesco' ||
+      'Deutsch' ||
+      'Alemán' => AppLocaleController.german,
+      '西班牙语' ||
+      'Spanish' ||
+      'スペイン語' ||
+      'Espagnol' ||
+      'Spagnolo' ||
+      'Spanisch' ||
+      'Español' => AppLocaleController.spanish,
+      _ => AppLocaleController.system,
     };
   }
 }
@@ -3526,6 +6630,112 @@ class _ChoiceRow extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _ClosedDisplayHelperRow extends StatelessWidget {
+  const _ClosedDisplayHelperRow({
+    required this.installed,
+    required this.busy,
+    required this.onRefresh,
+    required this.onInstall,
+    required this.onRemove,
+  });
+
+  final bool? installed;
+  final bool busy;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onInstall;
+  final Future<void> Function() onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final status = switch (installed) {
+      true => text.pick('Helper installed', '助手已安装'),
+      false => text.pick('Helper not installed', '助手未安装'),
+      null => text.pick('Helper status unknown', '助手状态未知'),
+    };
+    final statusColor = switch (installed) {
+      true => const Color(0xFF0F7E6E),
+      false => const Color(0xFF8A5D1A),
+      null => const Color(0xFF66716C),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F5EE),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE4DDC9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.admin_panel_settings_rounded, color: statusColor),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      text.pick('Closed-display helper', '合盖助手'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text.pick(
+              'Used only for the optional closed-display mode. Removing it deletes the local helper script and sudoers rule from this Mac.',
+              '仅用于可选的合盖模式。移除后会从这台 Mac 删除本地 helper 脚本和 sudoers 规则。',
+            ),
+            style: const TextStyle(
+              color: Color(0xFF66716C),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: busy ? null : onRefresh,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(text.pick('Refresh', '刷新')),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onInstall,
+                icon: const Icon(Icons.build_circle_outlined),
+                label: Text(text.pick('Install / Repair', '安装/修复')),
+              ),
+              FilledButton.icon(
+                onPressed: busy || installed != true ? null : onRemove,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: Text(text.pick('Remove helper', '移除助手')),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

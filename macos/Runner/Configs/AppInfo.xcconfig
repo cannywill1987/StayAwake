@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = StayAwake
+PRODUCT_NAME = NoSleepy - Wake Keeper
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = com.linzhibin.stayawake
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 StayAwake. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 NoSleepy - Wake Keeper. All rights reserved.
