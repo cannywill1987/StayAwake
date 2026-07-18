@@ -1216,7 +1216,7 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
       );
       if (!mounted || result == null) return;
       setState(() {
-        _powerProtectHelperInstalled = result['installed'] == true;
+        _powerProtectHelperInstalled = _powerProtectHelperPresent(result);
       });
     } catch (_) {
       if (!mounted) return;
@@ -1640,7 +1640,7 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
         'installPowerProtectHelper',
       );
       if (!mounted) return;
-      final installed = result?['installed'] == true;
+      final installed = _powerProtectHelperPresent(result);
       setState(() => _powerProtectHelperInstalled = installed);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1678,7 +1678,7 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
         'removePowerProtectHelper',
       );
       if (!mounted) return;
-      final installed = result?['installed'] == true;
+      final installed = _powerProtectHelperPresent(result);
       final success = result?['success'] == true;
       setState(() => _powerProtectHelperInstalled = installed);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1707,6 +1707,11 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
         setState(() => _powerProtectHelperBusy = false);
       }
     }
+  }
+
+  bool _powerProtectHelperPresent(Map<String, dynamic>? result) {
+    return result?['installed'] == true ||
+        result?['hasLocalHelperFiles'] == true;
   }
 
   Future<void> _updateRule(AwakeRule rule, bool enabled) async {
@@ -1789,12 +1794,15 @@ class _StayAwakeHomePageState extends State<StayAwakeHomePage> {
                       session: _session,
                       nativeStatus: _nativeStatusLabel(text, _nativeStatus),
                       languageMode: _settings.languageMode,
+                      powerProtectHelperInstalled: _powerProtectHelperInstalled,
+                      powerProtectHelperBusy: _powerProtectHelperBusy,
                       onFeedbackPressed: () => setState(
                         () => _selected = NavigationSection.feedback,
                       ),
                       onLanguageChanged: (value) => _updateSettings(
                         _settings.copyWith(languageMode: value),
                       ),
+                      onRemovePowerProtectHelper: _removePowerProtectHelper,
                     ),
                     const SizedBox(height: 8),
                     AnimatedSwitcher(
@@ -3959,16 +3967,22 @@ class _Header extends StatelessWidget {
     required this.session,
     required this.nativeStatus,
     required this.languageMode,
+    required this.powerProtectHelperInstalled,
+    required this.powerProtectHelperBusy,
     required this.onFeedbackPressed,
     required this.onLanguageChanged,
+    required this.onRemovePowerProtectHelper,
   });
 
   final String title;
   final AwakeSession session;
   final String nativeStatus;
   final String languageMode;
+  final bool? powerProtectHelperInstalled;
+  final bool powerProtectHelperBusy;
   final VoidCallback onFeedbackPressed;
   final ValueChanged<String> onLanguageChanged;
+  final Future<void> Function() onRemovePowerProtectHelper;
 
   @override
   Widget build(BuildContext context) {
@@ -3994,6 +4008,13 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
+        if (powerProtectHelperInstalled == true) ...[
+          _TopBarRemoveHelperButton(
+            busy: powerProtectHelperBusy,
+            onPressed: onRemovePowerProtectHelper,
+          ),
+          const SizedBox(width: 8),
+        ],
         _LanguageMenuButton(
           languageMode: languageMode,
           onChanged: onLanguageChanged,
@@ -4003,6 +4024,71 @@ class _Header extends StatelessWidget {
         const SizedBox(width: 12),
         _StatusPill(isActive: session.isActive),
       ],
+    );
+  }
+}
+
+class _TopBarRemoveHelperButton extends StatelessWidget {
+  const _TopBarRemoveHelperButton({
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final bool busy;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final label = text.pick('Remove Helper', '移除助手');
+    return Tooltip(
+      message: text.pick('Remove Closed-Display Helper', '移除合盖助手'),
+      child: Semantics(
+        button: true,
+        label: label,
+        child: Material(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: busy ? null : onPressed,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 118),
+              height: 34,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFF2C38B)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    busy
+                        ? Icons.hourglass_top_rounded
+                        : Icons.delete_outline_rounded,
+                    size: 18,
+                    color: const Color(0xFFB45309),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF7C2D12),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -5761,6 +5847,13 @@ class _SettingsPageState extends State<_SettingsPage> {
           '锁定屏幕、移动光标、用户切换和强制睡眠选项。',
         ),
         children: [
+          _ClosedDisplayRemovalPanel(
+            installed: widget.powerProtectHelperInstalled,
+            busy: widget.powerProtectHelperBusy,
+            onRefresh: widget.onRefreshPowerProtectHelper,
+            onRemove: widget.onRemovePowerProtectHelper,
+          ),
+          const Divider(height: 28),
           _SwitchRow(
             title: text.pick(
               'End session when Mac forces sleep',
@@ -6548,6 +6641,125 @@ class _SettingsSection extends StatelessWidget {
           const SizedBox(height: 18),
           ...children,
         ],
+      ),
+    );
+  }
+}
+
+class _ClosedDisplayRemovalPanel extends StatelessWidget {
+  const _ClosedDisplayRemovalPanel({
+    required this.installed,
+    required this.busy,
+    required this.onRefresh,
+    required this.onRemove,
+  });
+
+  final bool? installed;
+  final bool busy;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = AppText.of(context);
+    final helperReady = installed == true;
+    final status = switch (installed) {
+      true => text.pick('Helper installed', '助手已安装'),
+      false => text.pick('No helper installed', '未安装助手'),
+      null => text.pick('Helper status unknown', '助手状态未知'),
+    };
+    final accent = helperReady
+        ? const Color(0xFFB45309)
+        : const Color(0xFF66716C);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: helperReady ? const Color(0xFFFFF7ED) : const Color(0xFFF6F7F4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: helperReady
+              ? const Color(0xFFF2C38B)
+              : const Color(0xFFDDE3DD),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 620;
+          final copy = Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.admin_panel_settings_rounded, color: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      text.pick('Closed-display helper removal', '合盖助手移除'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      text.pick(
+                        'Use this before uninstalling the app, or whenever you no longer need closed-display sessions.',
+                        '卸载 App 前，或不再需要合盖防睡眠会话时，请在这里移除助手。',
+                      ),
+                      style: const TextStyle(
+                        color: Color(0xFF66716C),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+          final actions = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: compact ? WrapAlignment.start : WrapAlignment.end,
+            children: [
+              OutlinedButton.icon(
+                onPressed: busy ? null : onRefresh,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(text.pick('Refresh', '刷新')),
+              ),
+              FilledButton.icon(
+                onPressed: busy || !helperReady ? null : onRemove,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: Text(
+                  text.pick('Remove Closed-Display Helper', '移除合盖助手'),
+                ),
+              ),
+            ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [copy, const SizedBox(height: 12), actions],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: copy),
+              const SizedBox(width: 16),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }

@@ -2245,8 +2245,17 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate, UNUserNotificationCenterD
   }
 
   private func powerProtectHelperInstalled() -> Bool {
+    powerProtectHelperFilesExist() || powerProtectHelperUsableWithoutPassword()
+  }
+
+  private func powerProtectHelperFilesExist() -> Bool {
     let fileManager = FileManager.default
-    guard fileManager.isExecutableFile(atPath: powerProtectScriptPath) else {
+    return fileManager.fileExists(atPath: powerProtectScriptPath)
+      || fileManager.fileExists(atPath: powerProtectSudoersPath)
+  }
+
+  private func powerProtectHelperUsableWithoutPassword() -> Bool {
+    guard FileManager.default.isExecutableFile(atPath: powerProtectScriptPath) else {
       return false
     }
     if powerProtectSudoersRuleIsReadableAndValid() {
@@ -2278,6 +2287,8 @@ class AppDelegate: FlutterAppDelegate, NSMenuDelegate, UNUserNotificationCenterD
   private func powerProtectHelperStatusPayload(success: Bool? = nil) -> [String: Any] {
     var payload: [String: Any] = [
       "installed": powerProtectHelperInstalled(),
+      "hasLocalHelperFiles": powerProtectHelperFilesExist(),
+      "usableWithoutPassword": powerProtectHelperUsableWithoutPassword(),
       "scriptPath": powerProtectScriptPath,
       "sudoersPath": powerProtectSudoersPath
     ]
